@@ -1,0 +1,178 @@
+using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Electrical;
+
+namespace PanelScheduleSync;
+
+/// <summary>
+/// Extract data panel + circuit dari model Revit.
+/// Grouping circuit diasumsikan sudah dikerjakan manual di Revit —
+/// extractor tinggal baca electrical systems per panel.
+/// </summary>
+public class PanelExtractor(Document doc)
+{
+    public List<PanelData> ExtractAll()
+    {
+        var result = new List<PanelData>();
+
+        var equipments = new FilteredElementCollector(doc)
+            .OfCategory(BuiltInCategory.OST_ElectricalEquipment)
+            .WhereElementIsNotElementType()
+            .OfClass(typeof(FamilyInstance))
+            .Cast<FamilyInstance>();
+
+        foreach (FamilyInstance eq in equipments)
+        {
+            MEPModel? mep = eq.MEPModel;
+            ISet<ElectricalSystem>? assigned = mep?.GetAssignedElectricalSystems();
+            if (assigned is null || assigned.Count == 0)
+                continue; // bukan panel (tidak feed circuit apa pun)
+
+            // supply circuit = system di mana equipment ini BUKAN base equipment
+            ElectricalSystem? supply = mep!.GetElectricalSystems()?
+                .FirstOrDefault(s => s.BaseEquipment is null || s.BaseEquipment.Id != eq.Id);
+
+            var panel = new PanelData
+            {
+                PanelCode = ParamString(eq, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? eq.Name,
+                Location = (doc.GetElement(eq.LevelId) as Level)?.Name,
+                BoxType = "BOX PANEL",
+                SourcePanel = supply?.BaseEquipment is { } src
+                    ? $"FROM {ParamString(src, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? src.Name}"
+                    : null,
+                MainBreakerType = supply is not null ? $"MCB {supply.PolesNumber}P" : null,
+                MainBreakerRating = supply is not null ? $"{supply.Rating:0}A" : null,
+                IncomingCable = supply?.LookupParameter("Wire Size")?.AsString(),
+                // TODO: ambil voltage/phase/wire dari Distribution System kalau perlu
+            };
+
+            foreach (ElectricalSystem cs in assigned.OrderBy(CircuitSortKey))
+            {
+                panel.Circuits.Add(ExtractCircuit(cs, panel.PowerFactor));
+            }
+
+            if (panel.Circuits.Count > 0)
+                result.Add(panel);
+        }
+
+        return result;
+    }
+
+    private static int CircuitSortKey(ElectricalSystem cs)
+    {
+        return int.TryParse(cs.CircuitNumber, out int n) ? n : int.MaxValue;
+    }
+
+    private CircuitData ExtractCircuit(ElectricalSystem cs, double powerFactor)
+    {
+        bool isSpare = cs.CircuitType == CircuitType.Spare;
+        int poles = SafePoles(cs);
+
+        int.TryParse(cs.CircuitNumber, out int circuitNo);
+
+        // load (watt): pakai True Load, fallback Apparent Load x pf
+        double watt = ParamDouble(cs, BuiltInParameter.RBS_ELEC_TRUE_LOAD, UnitTypeId.Watts)
+                      ?? (ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes) ?? 0) * powerFactor;
+
+        var circuit = new CircuitData
+        {
+            CircuitNo = circuitNo,
+            FunctionName = isSpare ? "SPARE" : cs.LoadName,
+            // TODO: kalau ada shared parameter "Breaker Type" (RCBO/MCCB), itu yang dipakai
+            BreakerType = cs.LookupParameter("Breaker Type")?.AsString()
+                          ?? $"MCB {poles}P",
+            BreakerRating = $"{cs.Rating:0}A",
+            OutgoingCable = cs.LookupParameter("Wire Size")?.AsString(),
+            IsSpare = isSpare,
+        };
+
+        if (!isSpare && watt > 0)
+        {
+            if (poles >= 3)
+            {
+                // 3PH: balance R/S/T
+                double perPhase = Math.Round(watt / 3.0, 1);
+                circuit.PhaseR = perPhase;
+                circuit.PhaseS = perPhase;
+                circuit.PhaseT = perPhase;
+            }
+            else
+            {
+                // 1PH (termasuk RCBO 2P = phase + neutral): isi satu kolom fase.
+                // Aproksimasi fase dari nomor circuit (1,2,3 -> R,S,T bergilir).
+                // TODO: sesuaikan dengan arrangement slot panel kalau perlu presisi.
+                int phaseIndex = circuitNo > 0 ? (circuitNo - 1) % 3 : 0;
+                double w = Math.Round(watt, 1);
+                if (phaseIndex == 0) circuit.PhaseR = w;
+                else if (phaseIndex == 1) circuit.PhaseS = w;
+                else circuit.PhaseT = w;
+            }
+        }
+
+        if (!isSpare)
+            circuit.Fixtures = ExtractFixtures(cs);
+
+        return circuit;
+    }
+
+    /// <summary>Group element di circuit per family + type (= type family Revit).</summary>
+    private List<FixtureData> ExtractFixtures(ElectricalSystem cs)
+    {
+        var groups = new Dictionary<string, FixtureData>();
+
+        foreach (Element el in cs.Elements)
+        {
+            var elType = doc.GetElement(el.GetTypeId()) as ElementType;
+            string family = elType?.FamilyName ?? el.Category?.Name ?? "UNKNOWN";
+            string? label = elType?.Name;
+            string key = $"{family}|{label}";
+
+            if (!groups.TryGetValue(key, out FixtureData? fx))
+            {
+                fx = new FixtureData
+                {
+                    FixtureType = family.ToUpperInvariant(),
+                    FixtureLabel = label?.ToUpperInvariant(),
+                    WattPerUnit = ParamDouble(elType, "Wattage", UnitTypeId.Watts),
+                };
+                groups[key] = fx;
+            }
+
+            fx.Quantity++;
+        }
+
+        return [.. groups.Values];
+    }
+
+    private static int SafePoles(ElectricalSystem cs)
+    {
+        try
+        {
+            return Math.Max(1, cs.PolesNumber);
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    private static string? ParamString(Element el, BuiltInParameter bip)
+    {
+        string? v = el.get_Parameter(bip)?.AsString();
+        return string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    private static double? ParamDouble(Element? el, BuiltInParameter bip, ForgeTypeId unit)
+    {
+        Parameter? p = el?.get_Parameter(bip);
+        if (p is null || !p.HasValue) return null;
+        return UnitUtils.ConvertFromInternalUnits(p.AsDouble(), unit);
+    }
+
+    private static double? ParamDouble(Element? el, string name, ForgeTypeId unit)
+    {
+        Parameter? p = el?.LookupParameter(name);
+        if (p is null || !p.HasValue || p.StorageType != StorageType.Double) return null;
+        double v = UnitUtils.ConvertFromInternalUnits(p.AsDouble(), unit);
+        return v > 0 ? v : null;
+    }
+}

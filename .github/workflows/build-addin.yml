@@ -1,0 +1,35 @@
+name: Build Revit Add-in
+
+on:
+  push:
+    paths:
+      - "revit-addin/**"
+      - ".github/workflows/build-addin.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build (Release)
+        run: dotnet build revit-addin/PanelScheduleSync/PanelScheduleSync.csproj -c Release
+
+      - name: Package add-in
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package/PanelScheduleSync -Force | Out-Null
+          Copy-Item revit-addin/PanelScheduleSync/bin/Release/PanelScheduleSync.dll package/PanelScheduleSync/
+          Copy-Item revit-addin/PanelScheduleSync.addin package/
+          Copy-Item revit-addin/README.md package/INSTALL.md
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanelScheduleSync-Revit2025
+          path: package

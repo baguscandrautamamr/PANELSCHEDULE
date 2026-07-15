@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Revit 2025 = .NET 8 -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AssemblyVersion>0.1.0</AssemblyVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Revit API reference-only packages (buat build tanpa Revit terinstall, mis. di CI) -->
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.*" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.*" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

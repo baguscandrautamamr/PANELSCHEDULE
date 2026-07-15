@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Panel Schedule Sync</Name>
+    <Assembly>PanelScheduleSync\PanelScheduleSync.dll</Assembly>
+    <AddInId>a3f1d9c2-4b6e-4f2a-9c1d-8e5b2a7f3d61</AddInId>
+    <FullClassName>PanelScheduleSync.App</FullClassName>
+    <VendorId>EBA</VendorId>
+    <VendorDescription>PT EBA Karya Mandiri - Panel Schedule Sync</VendorDescription>
+  </AddIn>
+</RevitAddIns>
