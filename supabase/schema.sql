@@ -89,7 +89,17 @@ create policy "public full access" on circuits for all using (true) with check (
 drop policy if exists "public full access" on circuit_fixtures;
 create policy "public full access" on circuit_fixtures for all using (true) with check (true);
 
--- enable realtime
-alter publication supabase_realtime add table panels;
-alter publication supabase_realtime add table circuits;
-alter publication supabase_realtime add table circuit_fixtures;
+-- enable realtime (idempotent: aman dijalankan ulang / kalau tabel sudah terdaftar)
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['panels', 'circuits', 'circuit_fixtures'] loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception
+      when duplicate_object then null;  -- sudah terdaftar di publication
+      when undefined_object then null;  -- publication belum ada (realtime off) — skip
+    end;
+  end loop;
+end $$;
