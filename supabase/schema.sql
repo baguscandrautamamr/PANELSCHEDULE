@@ -94,7 +94,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['panels', 'circuits', 'circuit_fixtures'] loop
+  foreach t in array array['projects', 'panels', 'circuits', 'circuit_fixtures'] loop
     begin
       execute format('alter publication supabase_realtime add table %I', t);
     exception

@@ -8,6 +8,7 @@ import type { Panel, Project } from "@/lib/types";
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [panels, setPanels] = useState<Panel[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +37,11 @@ export default function Home() {
         { event: "*", schema: "public", table: "panels" },
         () => load()
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "projects" },
+        () => load()
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -50,6 +56,23 @@ export default function Home() {
           Realtime dari Revit via Supabase — klik panel untuk lihat schedule +
           SLD
         </p>
+        {projects.length > 0 && (
+          <div className="mt-4">
+            <label className="mr-2 text-sm text-neutral-600">Project:</label>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+            >
+              <option value="all">Semua project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </header>
 
       {loading && <p className="text-neutral-500">Memuat data…</p>}
@@ -72,7 +95,9 @@ export default function Home() {
         </div>
       )}
 
-      {projects.map((proj) => {
+      {projects
+        .filter((proj) => selectedProject === "all" || proj.id === selectedProject)
+        .map((proj) => {
         const list = panels.filter((p) => p.project_id === proj.id);
         if (list.length === 0) return null;
         return (

@@ -24,25 +24,35 @@ public class PushCommand : IExternalCommand
                 return Result.Cancelled;
             }
 
-            string projectName = string.IsNullOrWhiteSpace(doc.ProjectInformation?.Name)
+            string defaultProject = string.IsNullOrWhiteSpace(doc.ProjectInformation?.Name)
                 ? doc.Title
                 : doc.ProjectInformation!.Name;
 
-            var confirm = new TaskDialog("Panel Schedule Sync")
+            var client = new SupabaseClient();
+
+            List<string> existingProjects;
+            try
             {
-                MainInstruction = $"Push {panels.Count} panel ke website?",
-                MainContent = string.Join("\n", panels.Select(p => $"• {p.PanelCode} ({p.Circuits.Count} circuit)")),
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.Yes,
-            };
-            if (confirm.Show() != TaskDialogResult.Yes)
+                existingProjects = Task.Run(client.GetProjectNamesAsync).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                existingProjects = []; // offline / gagal fetch — tetap bisa ketik manual
+            }
+
+            string panelSummary = string.Join("\n",
+                panels.Select(p => $"• {p.PanelCode} ({p.Circuits.Count} circuit)"));
+
+            var picker = new ProjectPickerWindow(existingProjects, defaultProject, panelSummary);
+            if (picker.ShowDialog() != true)
                 return Result.Cancelled;
 
-            var client = new SupabaseClient();
+            string projectName = picker.SelectedProject;
             string summary = Task.Run(() => client.PushAsync(projectName, panels))
                 .GetAwaiter().GetResult();
 
-            TaskDialog.Show("Panel Schedule Sync", $"Berhasil push:\n\n{summary}");
+            TaskDialog.Show("Panel Schedule Sync",
+                $"Berhasil push ke project \"{projectName}\":\n\n{summary}");
             return Result.Succeeded;
         }
         catch (Exception ex)

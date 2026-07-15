@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthGate from "@/components/AuthGate";
 
 export const metadata: Metadata = {
   title: "Panel Schedule",
@@ -15,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="id" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-neutral-100 text-neutral-900">
-        {children}
+        <AuthGate>{children}</AuthGate>
       </body>
     </html>
   );

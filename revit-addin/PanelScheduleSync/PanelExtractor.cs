@@ -50,6 +50,8 @@ public class PanelExtractor(Document doc)
                 panel.Circuits.Add(ExtractCircuit(cs, panel.PowerFactor));
             }
 
+            RenumberDuplicates(panel.Circuits);
+
             if (panel.Circuits.Count > 0)
                 result.Add(panel);
         }
@@ -59,7 +61,37 @@ public class PanelExtractor(Document doc)
 
     private static int CircuitSortKey(ElectricalSystem cs)
     {
-        return int.TryParse(cs.CircuitNumber, out int n) ? n : int.MaxValue;
+        int n = ParseCircuitNumber(cs.CircuitNumber);
+        return n > 0 ? n : int.MaxValue;
+    }
+
+    /// <summary>
+    /// Nomor circuit Revit bisa berupa "7", "1,3,5" (multi-pole), atau kosong
+    /// (spare/space) — ambil angka pertama; 0 kalau tidak ada.
+    /// </summary>
+    private static int ParseCircuitNumber(string? circuitNumber)
+    {
+        if (string.IsNullOrWhiteSpace(circuitNumber)) return 0;
+        string digits = new(circuitNumber.Trim().TakeWhile(char.IsDigit).ToArray());
+        return int.TryParse(digits, out int n) ? n : 0;
+    }
+
+    /// <summary>
+    /// circuit_no wajib unik per panel (constraint di database).
+    /// Nomor 0 / duplikat diganti nomor kosong berikutnya.
+    /// </summary>
+    private static void RenumberDuplicates(List<CircuitData> circuits)
+    {
+        var used = new HashSet<int>();
+        int next = 1;
+        foreach (CircuitData c in circuits)
+        {
+            if (c.CircuitNo > 0 && used.Add(c.CircuitNo))
+                continue;
+            while (used.Contains(next)) next++;
+            c.CircuitNo = next;
+            used.Add(next);
+        }
     }
 
     private CircuitData ExtractCircuit(ElectricalSystem cs, double powerFactor)
@@ -67,7 +99,7 @@ public class PanelExtractor(Document doc)
         bool isSpare = cs.CircuitType == CircuitType.Spare;
         int poles = SafePoles(cs);
 
-        int.TryParse(cs.CircuitNumber, out int circuitNo);
+        int circuitNo = ParseCircuitNumber(cs.CircuitNumber);
 
         // load (watt): pakai True Load, fallback Apparent Load x pf
         double watt = ParamDouble(cs, BuiltInParameter.RBS_ELEC_TRUE_LOAD, UnitTypeId.Watts)

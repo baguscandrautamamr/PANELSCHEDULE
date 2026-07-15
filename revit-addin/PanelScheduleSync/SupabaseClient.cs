@@ -46,6 +46,19 @@ public class SupabaseClient
         }
     }
 
+    /// <summary>Daftar project yang sudah ada (buat picker di add-in).</summary>
+    public async Task<List<string>> GetProjectNamesAsync()
+    {
+        JsonDocument res = await SendAsync(HttpMethod.Get, "projects?select=name&order=name");
+        var names = new List<string>();
+        foreach (JsonElement row in res.RootElement.EnumerateArray())
+        {
+            string? name = row.GetProperty("name").GetString();
+            if (!string.IsNullOrWhiteSpace(name)) names.Add(name);
+        }
+        return names;
+    }
+
     /// <summary>Push semua panel. Return ringkasan buat TaskDialog.</summary>
     public async Task<string> PushAsync(string projectName, List<PanelData> panels)
     {
