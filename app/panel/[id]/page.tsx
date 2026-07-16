@@ -11,6 +11,7 @@ import PanelSLD from "@/components/PanelSLD";
 export default function PanelPage() {
   const { id } = useParams<{ id: string }>();
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [circuits, setCircuits] = useState<Circuit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +33,16 @@ export default function PanelPage() {
       setPanel(p);
       setCircuits((c ?? []) as Circuit[]);
       setError(null);
+      if (p?.project_id) {
+        const { data: proj } = await supabase
+          .from("projects")
+          .select("name")
+          .eq("id", p.project_id)
+          .single();
+        setProjectName(proj?.name ?? null);
+      } else {
+        setProjectName(null);
+      }
     }
     setLoading(false);
   }, [id]);
@@ -113,7 +124,11 @@ export default function PanelPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <PanelScheduleTable panel={panel} circuits={circuits} />
+            <PanelScheduleTable
+              panel={panel}
+              circuits={circuits}
+              projectName={projectName}
+            />
           </div>
         </div>
       )}

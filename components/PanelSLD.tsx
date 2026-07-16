@@ -36,13 +36,17 @@ export default function PanelSLD({ panel }: { panel: Panel }) {
       )}
 
       {/* incoming: source -> main breaker */}
-      <text x={16} y={58} fontSize={10} fill="currentColor">
-        {panel.source_panel ?? "FROM ..."}
-      </text>
+      {panel.source_panel && (
+        <text x={16} y={58} fontSize={10} fill="currentColor">
+          {panel.source_panel}
+        </text>
+      )}
       <line x1={16} y1={64} x2={190} y2={64} stroke="currentColor" strokeWidth={1.2} />
-      <text x={16} y={78} fontSize={9} fill="currentColor">
-        {panel.incoming_cable ?? ""}
-      </text>
+      {panel.incoming_cable && (
+        <text x={16} y={78} fontSize={9} fill="currentColor">
+          {panel.incoming_cable}
+        </text>
+      )}
 
       {/* main breaker */}
       <g stroke="currentColor" strokeWidth={1.2} fill="none">

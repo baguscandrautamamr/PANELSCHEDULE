@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Circuit, Panel } from "@/lib/types";
 import { fixtureKey } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
+import { exportPanelToExcel } from "@/lib/exportExcel";
 
 const nf = new Intl.NumberFormat("en-US");
 const nf1 = new Intl.NumberFormat("en-US", {
@@ -108,16 +109,33 @@ const emptyNewCircuit = {
   remarks: "",
 };
 
+/** Ambil watt total + fase dari circuit yang ada — buat prefill form edit. */
+function deriveWattPhase(c: Circuit): { watt: string; phase: "R" | "S" | "T" | "3PH" } {
+  const r = Number(c.phase_r || 0);
+  const s = Number(c.phase_s || 0);
+  const t = Number(c.phase_t || 0);
+  const nonZero = [r, s, t].filter((v) => v > 0).length;
+  if (nonZero >= 2) return { watt: String(Math.round((r + s + t) * 10) / 10), phase: "3PH" };
+  if (r > 0) return { watt: String(r), phase: "R" };
+  if (s > 0) return { watt: String(s), phase: "S" };
+  if (t > 0) return { watt: String(t), phase: "T" };
+  return { watt: "", phase: "R" };
+}
+
 export default function PanelScheduleTable({
   panel,
   circuits,
+  projectName,
 }: {
   panel: Panel;
   circuits: Circuit[];
+  projectName?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newCircuit, setNewCircuit] = useState(emptyNewCircuit);
+  const [exporting, setExporting] = useState(false);
   const cols = buildFixtureColumns(circuits);
 
   async function updateCircuit(id: string, patch: Record<string, string | null>) {
@@ -208,24 +226,46 @@ export default function PanelScheduleTable({
     }
   }
 
-  async function addCircuit() {
+  function openAddForm() {
+    setEditingId(null);
+    setNewCircuit(emptyNewCircuit);
+    setShowAdd(true);
+  }
+
+  function openEditForm(c: Circuit) {
+    const { watt, phase } = deriveWattPhase(c);
+    setNewCircuit({
+      function_name: c.function_name,
+      breaker_type: c.breaker_type ?? "MCB 1P",
+      breaker_rating: c.breaker_rating ?? "",
+      outgoing_cable: c.outgoing_cable ?? "",
+      watt,
+      phase,
+      remarks: c.remarks ?? "",
+    });
+    setEditingId(c.id);
+    setShowAdd(true);
+  }
+
+  function closeForm() {
+    setShowAdd(false);
+    setEditingId(null);
+    setNewCircuit(emptyNewCircuit);
+  }
+
+  async function submitCircuitForm() {
     if (!newCircuit.function_name.trim()) {
       alert("Nama FUNCTION wajib diisi.");
       return;
     }
-    const nextNo =
-      circuits.length > 0 ? Math.max(...circuits.map((c) => c.circuit_no)) + 1 : 1;
     const watt = parseFloat(newCircuit.watt) || 0;
 
     const patch: Record<string, string | number | boolean | null> = {
-      panel_id: panel.id,
-      circuit_no: nextNo,
       function_name: newCircuit.function_name.trim(),
       breaker_type: newCircuit.breaker_type || null,
       breaker_rating: newCircuit.breaker_rating || null,
       outgoing_cable: newCircuit.outgoing_cable || null,
       remarks: newCircuit.remarks || null,
-      is_spare: false,
       phase_r: 0,
       phase_s: 0,
       phase_t: 0,
@@ -239,11 +279,34 @@ export default function PanelScheduleTable({
       patch[`phase_${newCircuit.phase.toLowerCase()}`] = watt;
     }
 
-    const { error } = await supabase.from("circuits").insert(patch);
-    if (error) alert(`Gagal menambah load: ${error.message}`);
-    else {
-      setShowAdd(false);
-      setNewCircuit(emptyNewCircuit);
+    if (editingId) {
+      const { error } = await supabase.from("circuits").update(patch).eq("id", editingId);
+      if (error) {
+        alert(`Gagal menyimpan perubahan: ${error.message}`);
+        return;
+      }
+    } else {
+      const nextNo =
+        circuits.length > 0 ? Math.max(...circuits.map((c) => c.circuit_no)) + 1 : 1;
+      const { error } = await supabase
+        .from("circuits")
+        .insert({ ...patch, panel_id: panel.id, circuit_no: nextNo, is_spare: false });
+      if (error) {
+        alert(`Gagal menambah load: ${error.message}`);
+        return;
+      }
+    }
+    closeForm();
+  }
+
+  async function handleExportExcel() {
+    setExporting(true);
+    try {
+      await exportPanelToExcel(panel, circuits, cols, projectName ?? null);
+    } catch (e) {
+      alert(`Gagal export Excel: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -284,6 +347,11 @@ export default function PanelScheduleTable({
       {/* header panel */}
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
+          {projectName && (
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              {projectName}
+            </p>
+          )}
           <h1 className="text-lg font-bold">
             {panel.panel_code}
             {panel.ip_rating && ` (${panel.ip_rating})`}
@@ -320,10 +388,17 @@ export default function PanelScheduleTable({
               ⇅ Rebalance Loads
             </button>
             <button
-              onClick={() => setShowAdd((s) => !s)}
+              onClick={() => (showAdd ? closeForm() : openAddForm())}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
             >
-              {showAdd ? "✕ Batal tambah" : "+ Tambah Load"}
+              {showAdd ? "✕ Batal" : "+ Tambah Load"}
+            </button>
+            <button
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500 disabled:opacity-50"
+            >
+              {exporting ? "Menyiapkan…" : "📊 Export Excel"}
             </button>
           </div>
         </div>
@@ -331,11 +406,12 @@ export default function PanelScheduleTable({
 
       {editing && (
         <p className="no-print mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
-          Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah, tekan Enter
-          atau klik di luar untuk menyimpan; panah ▲▼ di kolom NO. untuk
-          pindah urutan. Jalankan <b>Pull from Website</b> di Revit add-in
-          untuk menarik FUNCTION/BREAKER/CABLE ke model — kalau tidak berubah
-          di Revit, parameternya read-only di family tersebut. Urutan
+          Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah cepat, tekan
+          Enter atau klik di luar untuk menyimpan. Klik <b>✎</b> di kolom NO.
+          untuk edit lengkap (termasuk WATT, FASE, REMARKS) lewat form. Panah
+          ▲▼ untuk pindah urutan. Jalankan <b>Pull from Website</b> di Revit
+          add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — kalau tidak
+          berubah di Revit, parameternya read-only di family tersebut. Urutan
           (▲▼) dan hasil <b>Rebalance Loads</b> tersimpan di website saja;
           Push berikutnya dari Revit akan menimpa sesuai kondisi model asli.
         </p>
@@ -343,6 +419,9 @@ export default function PanelScheduleTable({
 
       {showAdd && (
         <div className="no-print mb-3 flex flex-wrap items-end gap-2 rounded border border-blue-200 bg-blue-50 p-3">
+          <p className="w-full text-xs font-semibold text-blue-800">
+            {editingId ? "Edit circuit" : "Tambah load baru"}
+          </p>
           <label className="flex flex-col text-xs text-neutral-600">
             FUNCTION
             <input
@@ -431,10 +510,16 @@ export default function PanelScheduleTable({
             />
           </label>
           <button
-            onClick={addCircuit}
+            onClick={submitCircuitForm}
             className="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
           >
-            Tambah
+            {editingId ? "Simpan perubahan" : "Tambah"}
+          </button>
+          <button
+            onClick={closeForm}
+            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
+          >
+            Batal
           </button>
         </div>
       )}
@@ -527,6 +612,15 @@ export default function PanelScheduleTable({
                       </div>
                     )}
                     <span>{c.circuit_no}</span>
+                    {editing && (
+                      <button
+                        onClick={() => openEditForm(c)}
+                        title="Edit lengkap circuit ini (termasuk watt, fase, remarks)"
+                        className="no-print text-[10px] text-blue-500 hover:text-blue-700"
+                      >
+                        ✎
+                      </button>
+                    )}
                   </div>
                 </td>
                 <td className="px-1 py-0.5">

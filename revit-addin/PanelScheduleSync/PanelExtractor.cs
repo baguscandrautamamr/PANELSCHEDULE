@@ -40,8 +40,11 @@ public class PanelExtractor(Document doc)
                     ? $"FROM {ParamString(src, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? src.Name}"
                     : null,
                 MainBreakerType = supply is not null ? $"MCB {supply.PolesNumber}P" : null,
-                // format "25.00 A" — match tampilan MCB Rating di Revit
-                MainBreakerRating = supply is not null ? $"{supply.Rating:0.00} A" : null,
+                // Prioritas: parameter "MCB Rating" di family panel itu sendiri
+                // (custom/project parameter, apa adanya sesuai tampilan Revit).
+                // Fallback: Rating circuit supply kalau parameter itu tidak ada.
+                MainBreakerRating = eq.LookupParameter("MCB Rating")?.AsValueString()
+                    ?? (supply is not null ? $"{supply.Rating:0.00} A" : null),
                 IncomingCable = supply?.LookupParameter("Wire Size")?.AsString(),
                 // TODO: ambil voltage/phase/wire dari Distribution System kalau perlu
             };
