@@ -70,22 +70,30 @@ export default function PanelPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="no-print mb-4 flex items-center justify-between">
         <Link href="/" className="text-sm text-blue-700 hover:underline">
           ← Semua panel
         </Link>
-        <span
-          className={`flex items-center gap-1.5 text-xs ${
-            live ? "text-green-700" : "text-neutral-400"
-          }`}
-        >
+        <div className="flex items-center gap-3">
           <span
-            className={`h-2 w-2 rounded-full ${
-              live ? "bg-green-500" : "bg-neutral-300"
+            className={`flex items-center gap-1.5 text-xs ${
+              live ? "text-green-700" : "text-neutral-400"
             }`}
-          />
-          {live ? "Realtime aktif" : "Menghubungkan…"}
-        </span>
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                live ? "bg-green-500" : "bg-neutral-300"
+              }`}
+            />
+            {live ? "Realtime aktif" : "Menghubungkan…"}
+          </span>
+          <button
+            onClick={() => window.print()}
+            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
+          >
+            🖨 Print / Export PDF
+          </button>
+        </div>
       </div>
 
       {loading && <p className="text-neutral-500">Memuat panel…</p>}
@@ -96,18 +104,18 @@ export default function PanelPage() {
       )}
 
       {panel && (
-        <>
-          <section className="mb-6 overflow-x-auto rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+        <div className="print-area flex flex-col gap-6 lg:flex-row lg:items-start">
+          <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm lg:w-[380px] lg:flex-shrink-0">
             <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-neutral-500">
               Single Line Diagram
             </h2>
             <PanelSLD panel={panel} circuits={circuits} />
           </section>
 
-          <section className="overflow-x-auto rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <section className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
             <PanelScheduleTable panel={panel} circuits={circuits} />
           </section>
-        </>
+        </div>
       )}
     </main>
   );

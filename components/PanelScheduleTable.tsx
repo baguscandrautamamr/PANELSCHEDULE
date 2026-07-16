@@ -62,6 +62,16 @@ function CellInput({
   );
 }
 
+const emptyNewCircuit = {
+  function_name: "",
+  breaker_type: "MCB 1P",
+  breaker_rating: "10A",
+  outgoing_cable: "",
+  watt: "",
+  phase: "R" as "R" | "S" | "T" | "3PH",
+  remarks: "",
+};
+
 export default function PanelScheduleTable({
   panel,
   circuits,
@@ -70,11 +80,135 @@ export default function PanelScheduleTable({
   circuits: Circuit[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newCircuit, setNewCircuit] = useState(emptyNewCircuit);
   const cols = buildFixtureColumns(circuits);
 
   async function updateCircuit(id: string, patch: Record<string, string | null>) {
     const { error } = await supabase.from("circuits").update(patch).eq("id", id);
     if (error) alert(`Gagal menyimpan: ${error.message}`);
+  }
+
+  /// Tukar circuit_no dua circuit lewat nilai sementara supaya tidak
+  /// menabrak unique constraint (panel_id, circuit_no) saat swap.
+  async function moveCircuit(index: number, direction: -1 | 1) {
+    const other = index + direction;
+    if (other < 0 || other >= circuits.length) return;
+    const a = circuits[index];
+    const b = circuits[other];
+    const aOrig = a.circuit_no;
+    const bOrig = b.circuit_no;
+    const temp = -Math.abs(aOrig) - 100000;
+
+    const { error: e1 } = await supabase
+      .from("circuits")
+      .update({ circuit_no: temp })
+      .eq("id", a.id);
+    const { error: e2 } = e1
+      ? { error: e1 }
+      : await supabase.from("circuits").update({ circuit_no: aOrig }).eq("id", b.id);
+    const { error: e3 } = e1 || e2
+      ? { error: e1 ?? e2 }
+      : await supabase.from("circuits").update({ circuit_no: bOrig }).eq("id", a.id);
+
+    const err = e1 ?? e2 ?? e3;
+    if (err) alert(`Gagal memindahkan urutan: ${err.message}`);
+  }
+
+  /// Rebalance web-only: redistribusi circuit 1-fase ke R/S/T yang paling
+  /// ringan (greedy, mirip niat "Rebalance Loads" di Revit). Circuit 3-fase
+  /// (sudah balanced) tidak diubah. Push berikutnya dari Revit akan menimpa
+  /// hasil ini sesuai kondisi model asli.
+  async function rebalanceLoads() {
+    if (
+      !confirm(
+        "Hitung ulang pembagian fase R/S/T untuk semua circuit 1-fase di panel ini? Circuit 3-fase tidak berubah."
+      )
+    )
+      return;
+
+    const totals = { R: 0, S: 0, T: 0 };
+    const singlePhase: { id: string; watt: number }[] = [];
+
+    for (const c of circuits) {
+      if (c.is_spare) continue;
+      const r = Number(c.phase_r || 0);
+      const s = Number(c.phase_s || 0);
+      const t = Number(c.phase_t || 0);
+      const nonZero = [r, s, t].filter((v) => v > 0).length;
+      if (nonZero >= 2) {
+        totals.R += r;
+        totals.S += s;
+        totals.T += t;
+      } else if (nonZero === 1) {
+        singlePhase.push({ id: c.id, watt: r || s || t });
+      }
+    }
+
+    singlePhase.sort((a, b) => b.watt - a.watt);
+    const assignment: Record<string, "R" | "S" | "T"> = {};
+    for (const item of singlePhase) {
+      const phase = (["R", "S", "T"] as const).reduce((min, p) =>
+        totals[p] < totals[min] ? p : min
+      , "R" as "R" | "S" | "T");
+      totals[phase] += item.watt;
+      assignment[item.id] = phase;
+    }
+
+    for (const item of singlePhase) {
+      const phase = assignment[item.id];
+      const { error } = await supabase
+        .from("circuits")
+        .update({
+          phase_r: phase === "R" ? item.watt : 0,
+          phase_s: phase === "S" ? item.watt : 0,
+          phase_t: phase === "T" ? item.watt : 0,
+        })
+        .eq("id", item.id);
+      if (error) {
+        alert(`Gagal rebalance: ${error.message}`);
+        return;
+      }
+    }
+  }
+
+  async function addCircuit() {
+    if (!newCircuit.function_name.trim()) {
+      alert("Nama FUNCTION wajib diisi.");
+      return;
+    }
+    const nextNo =
+      circuits.length > 0 ? Math.max(...circuits.map((c) => c.circuit_no)) + 1 : 1;
+    const watt = parseFloat(newCircuit.watt) || 0;
+
+    const patch: Record<string, string | number | boolean | null> = {
+      panel_id: panel.id,
+      circuit_no: nextNo,
+      function_name: newCircuit.function_name.trim(),
+      breaker_type: newCircuit.breaker_type || null,
+      breaker_rating: newCircuit.breaker_rating || null,
+      outgoing_cable: newCircuit.outgoing_cable || null,
+      remarks: newCircuit.remarks || null,
+      is_spare: false,
+      phase_r: 0,
+      phase_s: 0,
+      phase_t: 0,
+    };
+    if (newCircuit.phase === "3PH") {
+      const per = Math.round((watt / 3) * 10) / 10;
+      patch.phase_r = per;
+      patch.phase_s = per;
+      patch.phase_t = per;
+    } else {
+      patch[`phase_${newCircuit.phase.toLowerCase()}`] = watt;
+    }
+
+    const { error } = await supabase.from("circuits").insert(patch);
+    if (error) alert(`Gagal menambah load: ${error.message}`);
+    else {
+      setShowAdd(false);
+      setNewCircuit(emptyNewCircuit);
+    }
   }
 
   const qtyOf = (c: Circuit, key: string) =>
@@ -132,26 +266,141 @@ export default function PanelScheduleTable({
               {headerLine3} · cos φ {pf}
             </p>
           </div>
-          <button
-            onClick={() => setEditing((e) => !e)}
-            className={`rounded border px-3 py-1.5 text-xs font-semibold transition ${
-              editing
-                ? "border-blue-600 bg-blue-600 text-white hover:bg-blue-700"
-                : "border-neutral-300 bg-white text-neutral-700 hover:border-blue-500"
-            }`}
-          >
-            {editing ? "✓ Selesai edit" : "✎ Edit function, breaker & kabel"}
-          </button>
+          <div className="no-print flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setEditing((e) => !e)}
+              className={`rounded border px-3 py-1.5 text-xs font-semibold transition ${
+                editing
+                  ? "border-blue-600 bg-blue-600 text-white hover:bg-blue-700"
+                  : "border-neutral-300 bg-white text-neutral-700 hover:border-blue-500"
+              }`}
+            >
+              {editing ? "✓ Selesai edit" : "✎ Edit function, breaker & kabel"}
+            </button>
+            <button
+              onClick={rebalanceLoads}
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
+            >
+              ⇅ Rebalance Loads
+            </button>
+            <button
+              onClick={() => setShowAdd((s) => !s)}
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
+            >
+              {showAdd ? "✕ Batal tambah" : "+ Tambah Load"}
+            </button>
+          </div>
         </div>
       </div>
 
       {editing && (
-        <p className="mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+        <p className="no-print mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
           Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah, tekan Enter
-          atau klik di luar untuk menyimpan. Jalankan <b>Pull from Website</b>{" "}
-          di Revit add-in untuk menarik perubahan ini ke model — kalau FUNCTION
-          tidak berubah di Revit, parameternya read-only di family tersebut.
+          atau klik di luar untuk menyimpan; panah ▲▼ di kolom NO. untuk
+          pindah urutan. Jalankan <b>Pull from Website</b> di Revit add-in
+          untuk menarik FUNCTION/BREAKER/CABLE ke model — kalau tidak berubah
+          di Revit, parameternya read-only di family tersebut. Urutan
+          (▲▼) dan hasil <b>Rebalance Loads</b> tersimpan di website saja;
+          Push berikutnya dari Revit akan menimpa sesuai kondisi model asli.
         </p>
+      )}
+
+      {showAdd && (
+        <div className="no-print mb-3 flex flex-wrap items-end gap-2 rounded border border-blue-200 bg-blue-50 p-3">
+          <label className="flex flex-col text-xs text-neutral-600">
+            FUNCTION
+            <input
+              value={newCircuit.function_name}
+              onChange={(e) =>
+                setNewCircuit((s) => ({ ...s, function_name: e.target.value }))
+              }
+              className="rounded border border-neutral-300 px-2 py-1 text-xs"
+              placeholder="mis. LIGHTING (L4-20)"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-neutral-600">
+            BREAKER TYPE
+            <select
+              value={newCircuit.breaker_type}
+              onChange={(e) =>
+                setNewCircuit((s) => ({ ...s, breaker_type: e.target.value }))
+              }
+              className="rounded border border-neutral-300 px-2 py-1 text-xs"
+            >
+              {["MCB 1P", "MCB 3P", "MCCB 3P", "RCBO 2P", "RCBO 4P"].map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col text-xs text-neutral-600">
+            RATING
+            <input
+              value={newCircuit.breaker_rating}
+              onChange={(e) =>
+                setNewCircuit((s) => ({ ...s, breaker_rating: e.target.value }))
+              }
+              className="w-16 rounded border border-neutral-300 px-2 py-1 text-xs"
+              placeholder="10A"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-neutral-600">
+            CABLE
+            <input
+              value={newCircuit.outgoing_cable}
+              onChange={(e) =>
+                setNewCircuit((s) => ({ ...s, outgoing_cable: e.target.value }))
+              }
+              className="w-32 rounded border border-neutral-300 px-2 py-1 text-xs"
+              placeholder="NYM 3C x 2.5mm2"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-neutral-600">
+            WATT
+            <input
+              type="number"
+              value={newCircuit.watt}
+              onChange={(e) => setNewCircuit((s) => ({ ...s, watt: e.target.value }))}
+              className="w-20 rounded border border-neutral-300 px-2 py-1 text-xs"
+              placeholder="360"
+            />
+          </label>
+          <label className="flex flex-col text-xs text-neutral-600">
+            FASE
+            <select
+              value={newCircuit.phase}
+              onChange={(e) =>
+                setNewCircuit((s) => ({
+                  ...s,
+                  phase: e.target.value as typeof newCircuit.phase,
+                }))
+              }
+              className="rounded border border-neutral-300 px-2 py-1 text-xs"
+            >
+              <option value="R">R (1-fase)</option>
+              <option value="S">S (1-fase)</option>
+              <option value="T">T (1-fase)</option>
+              <option value="3PH">3-fase (balance)</option>
+            </select>
+          </label>
+          <label className="flex flex-col text-xs text-neutral-600">
+            REMARKS
+            <input
+              value={newCircuit.remarks}
+              onChange={(e) =>
+                setNewCircuit((s) => ({ ...s, remarks: e.target.value }))
+              }
+              className="w-28 rounded border border-neutral-300 px-2 py-1 text-xs"
+            />
+          </label>
+          <button
+            onClick={addCircuit}
+            className="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+          >
+            Tambah
+          </button>
+        </div>
       )}
 
       <table className="sched-table w-full border-collapse text-xs">
@@ -207,13 +456,37 @@ export default function PanelScheduleTable({
           </tr>
         </thead>
         <tbody>
-          {circuits.map((c) => {
+          {circuits.map((c, idx) => {
             const breakerText = [c.breaker_type, c.breaker_rating]
               .filter(Boolean)
               .join(" ");
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
-                <td className="px-2 py-0.5 text-center">{c.circuit_no}</td>
+                <td className="px-1 py-0.5 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    {editing && (
+                      <div className="no-print flex flex-col leading-none">
+                        <button
+                          disabled={idx === 0}
+                          onClick={() => moveCircuit(idx, -1)}
+                          title="Pindah naik"
+                          className="text-[9px] text-neutral-400 hover:text-blue-600 disabled:opacity-20"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          disabled={idx === circuits.length - 1}
+                          onClick={() => moveCircuit(idx, 1)}
+                          title="Pindah turun"
+                          className="text-[9px] text-neutral-400 hover:text-blue-600 disabled:opacity-20"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    )}
+                    <span>{c.circuit_no}</span>
+                  </div>
+                </td>
                 <td className="px-1 py-0.5">
                   {editing ? (
                     <CellInput
@@ -335,6 +608,23 @@ export default function PanelScheduleTable({
           </tr>
         </tfoot>
       </table>
+
+      <div className="mt-3 space-y-1 border-t border-neutral-200 pt-2 text-[11px] text-neutral-600">
+        <p className="font-semibold text-neutral-700">Rumus perhitungan:</p>
+        <p>
+          TOTAL WATT = ΣR + ΣS + ΣT = {nf.format(subR)} + {nf.format(subS)} +{" "}
+          {nf.format(subT)} = {nf1.format(totalWatt)} W
+        </p>
+        <p>
+          TOTAL VA = TOTAL WATT / cos φ = {nf1.format(totalWatt)} / {pf} ={" "}
+          {nf1.format(totalVA)} VA
+        </p>
+        <p>
+          CONNECTED AMPERE = TOTAL VA / {is3ph ? "(√3 × V)" : "V"} ={" "}
+          {nf1.format(totalVA)} / {is3ph ? `(1.732 × ${voltLL})` : "230"} ={" "}
+          {nf1.format(ampere)} A
+        </p>
+      </div>
     </div>
   );
 }

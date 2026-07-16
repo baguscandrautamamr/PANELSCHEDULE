@@ -102,7 +102,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="flex items-center justify-end gap-3 border-b border-neutral-200 bg-white px-4 py-1.5 text-xs text-neutral-600">
+      <div className="no-print flex items-center justify-end gap-3 border-b border-neutral-200 bg-white px-4 py-1.5 text-xs text-neutral-600">
         <span>{session.user.email}</span>
         <button
           onClick={() => supabase.auth.signOut()}

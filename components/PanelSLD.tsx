@@ -10,7 +10,7 @@ import type { Circuit, Panel } from "@/lib/types";
 
 const ROW_H = 30;
 const BUS_X = 190;
-const TOP = 96;
+const TOP = 132;
 
 function BreakerGlyph({
   x,
@@ -56,9 +56,7 @@ export default function PanelSLD({
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
-      className="text-neutral-800"
+      className="h-auto w-full text-neutral-800"
       role="img"
       aria-label={`Single line diagram panel ${panel.panel_code}`}
     >
@@ -84,8 +82,29 @@ export default function PanelSLD({
       {/* main breaker */}
       <BreakerGlyph x={96} y={64} type={panel.main_breaker_type} />
       <text x={96} y={48} fontSize={9} fill="currentColor">
-        {panel.main_breaker_type} {panel.main_breaker_rating}
+        {panel.main_breaker_type}
       </text>
+
+      {/* MCB Rating panel — nilai sync dari param Rating main breaker di Revit */}
+      {panel.main_breaker_rating && (
+        <g>
+          <rect
+            x={72}
+            y={76}
+            width={92}
+            height={30}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={0.75}
+          />
+          <text x={78} y={89} fontSize={7.5} fill="currentColor">
+            MCB Rating
+          </text>
+          <text x={78} y={101} fontSize={9} fontWeight={700} fill="currentColor">
+            {panel.main_breaker_rating}
+          </text>
+        </g>
+      )}
 
       {/* fuse + indicator lamp R/Y/B */}
       <line x1={160} y1={64} x2={160} y2={30} stroke="currentColor" strokeWidth={1} />
