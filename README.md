@@ -25,6 +25,8 @@ Revit (grouped circuits) -> C# add-in "Push to Website" (manual)
 Buka [SQL Editor](https://supabase.com/dashboard/project/ptkhwoabeclqbfemxgnj/sql/new), lalu jalankan:
 
 1. `supabase/schema.sql` — bikin tabel + RLS + realtime publication
+   (aman dijalankan ulang; kalau database sudah ada, jalankan ulang sekali
+   untuk menambah kolom `circuits.source` — wajib buat add-in versi terbaru)
 2. `supabase/seed.sql` — data contoh panel **P-011.4 LDB PRODUCTION 1st** (opsional tapi disarankan, biar website langsung ada isinya)
 
 ### 2. Vercel
@@ -53,6 +55,15 @@ npm run dev   # http://localhost:3000
   main breaker → fuse + lampu R/Y/B → bus → breaker per circuit
   (MCB 1P/3P, MCCB 3P, RCBO 2P/4P dibedakan simbolnya)
 - Update di Supabase langsung muncul di web (Supabase Realtime)
+- **Load manual** (+ Tambah Load, badge **M** di tabel): tidak ditimpa/dihapus
+  saat Push dari Revit — kalau nomornya bentrok dengan circuit Revit baru,
+  otomatis digeser ke nomor setelah circuit terakhir (isinya tetap).
+  Pull from Website juga melewati baris manual (tidak ditulis ke Revit).
+- **Hapus circuit dari web** (🗑 di mode edit): load manual langsung terhapus
+  dan nomor manual lain naik mengisi celah; circuit Revit ditandai hapus
+  (tombstone `circuit_no` negatif) lalu di-**disconnect dari panel** saat
+  Pull from Website dijalankan di Revit — Push sebelum Pull membatalkan
+  hapusnya (circuit muncul lagi dari model).
 
 ## Roadmap
 

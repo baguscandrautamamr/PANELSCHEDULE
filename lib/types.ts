@@ -28,6 +28,7 @@ export interface Panel {
 export interface Circuit {
   id: string;
   panel_id: string;
+  /** negatif = circuit Revit yang dihapus di web, menunggu disconnect via Pull */
   circuit_no: number;
   function_name: string;
   breaker_type: string | null;
@@ -38,6 +39,8 @@ export interface Circuit {
   phase_t: number;
   remarks: string | null;
   is_spare: boolean;
+  /** 'revit' = dari push add-in (ditimpa tiap push); 'manual' = input website (dipertahankan) */
+  source: "revit" | "manual";
   circuit_fixtures: CircuitFixture[];
 }
 

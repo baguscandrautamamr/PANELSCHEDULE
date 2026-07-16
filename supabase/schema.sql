@@ -46,8 +46,14 @@ create table if not exists circuits (
   phase_t numeric default 0,
   remarks text,
   is_spare boolean default false,
+  source text not null default 'revit',  -- 'revit' = dari push add-in (ditimpa tiap push);
+                                         -- 'manual' = input di website (tidak disentuh push)
   unique (panel_id, circuit_no)
 );
+
+-- migrasi untuk database yang sudah ada (create table if not exists di atas
+-- tidak menambah kolom ke tabel lama) — aman dijalankan ulang
+alter table circuits add column if not exists source text not null default 'revit';
 
 create table if not exists circuit_fixtures (
   id uuid primary key default gen_random_uuid(),
