@@ -226,6 +226,67 @@ export default function PanelScheduleTable({
     }
   }
 
+  /// Rapatkan nomor load manual supaya berurutan tepat setelah circuit Revit
+  /// terakhir (mengisi celah yang ditinggal baris yang dihapus). Dua fase
+  /// lewat nomor sementara besar supaya tidak menabrak unique constraint.
+  async function compactManualNumbers(excludeId: string) {
+    const visible = circuits.filter((c) => c.circuit_no > 0 && c.id !== excludeId);
+    const maxRevit = visible
+      .filter((c) => c.source !== "manual")
+      .reduce((m, c) => Math.max(m, c.circuit_no), 0);
+    const moves = visible
+      .filter((c) => c.source === "manual")
+      .sort((a, b) => a.circuit_no - b.circuit_no)
+      .map((c, i) => ({ c, to: maxRevit + 1 + i }))
+      .filter(({ c, to }) => c.circuit_no !== to);
+
+    for (const { c, to } of moves) {
+      const { error } = await supabase
+        .from("circuits")
+        .update({ circuit_no: to + 100000 })
+        .eq("id", c.id);
+      if (error) {
+        alert(`Gagal merapikan nomor: ${error.message}`);
+        return;
+      }
+    }
+    for (const { c, to } of moves) {
+      const { error } = await supabase
+        .from("circuits")
+        .update({ circuit_no: to })
+        .eq("id", c.id);
+      if (error) {
+        alert(`Gagal merapikan nomor: ${error.message}`);
+        return;
+      }
+    }
+  }
+
+  async function deleteCircuit(c: Circuit) {
+    const isManual = c.source === "manual";
+    const msg = isManual
+      ? `Hapus load manual "${c.function_name}" (no. ${c.circuit_no})?`
+      : `Hapus circuit ${c.circuit_no} "${c.function_name}"?\n\n` +
+        `Circuit ini milik Revit — dia akan di-DISCONNECT dari panel saat ` +
+        `"Pull from Website" dijalankan di Revit. Kalau Push to Website ` +
+        `dijalankan lagi SEBELUM Pull, circuit ini muncul kembali.`;
+    if (!confirm(msg)) return;
+
+    // baris manual dihapus langsung; baris Revit ditandai dengan nomor negatif
+    // (tombstone) supaya Pull di Revit tahu circuit mana yang harus di-disconnect
+    const { error } = isManual
+      ? await supabase.from("circuits").delete().eq("id", c.id)
+      : await supabase
+          .from("circuits")
+          .update({ circuit_no: -c.circuit_no })
+          .eq("id", c.id);
+    if (error) {
+      alert(`Gagal menghapus: ${error.message}`);
+      return;
+    }
+    await compactManualNumbers(c.id);
+  }
+
   function openAddForm() {
     setEditingId(null);
     setNewCircuit(emptyNewCircuit);
@@ -415,7 +476,11 @@ export default function PanelScheduleTable({
           Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah cepat, tekan
           Enter atau klik di luar untuk menyimpan. Klik <b>✎</b> di kolom NO.
           untuk edit lengkap (termasuk WATT, FASE, REMARKS) lewat form. Panah
-          ▲▼ untuk pindah urutan. Jalankan <b>Pull from Website</b> di Revit
+          ▲▼ untuk pindah urutan, <b>🗑</b> untuk hapus baris — load manual
+          langsung terhapus (nomor manual lain naik mengisi celah); circuit
+          Revit akan di-<b>disconnect</b> dari panel saat Pull from Website
+          dijalankan (Push sebelum Pull membatalkan hapusnya). Jalankan{" "}
+          <b>Pull from Website</b> di Revit
           add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — kalau tidak
           berubah di Revit, parameternya read-only di family tersebut. Urutan
           (▲▼) dan hasil <b>Rebalance Loads</b> tersimpan di website saja;
@@ -630,13 +695,26 @@ export default function PanelScheduleTable({
                       </span>
                     )}
                     {editing && (
-                      <button
-                        onClick={() => openEditForm(c)}
-                        title="Edit lengkap circuit ini (termasuk watt, fase, remarks)"
-                        className="no-print text-[10px] text-blue-500 hover:text-blue-700"
-                      >
-                        ✎
-                      </button>
+                      <>
+                        <button
+                          onClick={() => openEditForm(c)}
+                          title="Edit lengkap circuit ini (termasuk watt, fase, remarks)"
+                          className="no-print text-[10px] text-blue-500 hover:text-blue-700"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => deleteCircuit(c)}
+                          title={
+                            c.source === "manual"
+                              ? "Hapus load manual ini"
+                              : "Hapus circuit ini — akan di-disconnect dari panel saat Pull from Website di Revit"
+                          }
+                          className="no-print text-[10px] text-red-400 hover:text-red-600"
+                        >
+                          🗑
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>

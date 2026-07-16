@@ -28,6 +28,7 @@ export interface Panel {
 export interface Circuit {
   id: string;
   panel_id: string;
+  /** negatif = circuit Revit yang dihapus di web, menunggu disconnect via Pull */
   circuit_no: number;
   function_name: string;
   breaker_type: string | null;

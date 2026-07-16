@@ -59,6 +59,11 @@ npm run dev   # http://localhost:3000
   saat Push dari Revit — kalau nomornya bentrok dengan circuit Revit baru,
   otomatis digeser ke nomor setelah circuit terakhir (isinya tetap).
   Pull from Website juga melewati baris manual (tidak ditulis ke Revit).
+- **Hapus circuit dari web** (🗑 di mode edit): load manual langsung terhapus
+  dan nomor manual lain naik mengisi celah; circuit Revit ditandai hapus
+  (tombstone `circuit_no` negatif) lalu di-**disconnect dari panel** saat
+  Pull from Website dijalankan di Revit — Push sebelum Pull membatalkan
+  hapusnya (circuit muncul lagi dari model).
 
 ## Roadmap
 

@@ -22,6 +22,7 @@ public partial class PullCommand : IExternalCommand
         var client = new SupabaseClient();
         var report = new StringBuilder();
         int updated = 0, skippedCable = 0, skippedFunction = 0;
+        int disconnected = 0, failedDisconnect = 0;
 
         try
         {
@@ -104,13 +105,50 @@ public partial class PullCommand : IExternalCommand
                     }
                 }
 
-                report.AppendLine($"{panelCode}: {panelUpdated} circuit diupdate");
+                // circuit yang dihapus lewat website (tombstone circuit_no
+                // negatif): disconnect dari panel, lalu bersihkan barisnya
+                int panelDisconnected = 0;
+                List<(string Id, int No)> deletedRows =
+                    Task.Run(() => client.GetDeletedCircuitsByPanelCodeAsync(panelCode))
+                        .GetAwaiter().GetResult();
+                foreach ((string rowId, int no) in deletedRows)
+                {
+                    ElectricalSystem? cs = assigned
+                        .FirstOrDefault(s => ParseFirstNumber(s.CircuitNumber) == no);
+                    if (cs is not null)
+                    {
+                        try
+                        {
+                            cs.DisconnectPanel();
+                            disconnected++;
+                            panelDisconnected++;
+                        }
+                        catch
+                        {
+                            // gagal disconnect — biarkan tombstone di database
+                            // supaya bisa dicoba lagi di Pull berikutnya
+                            failedDisconnect++;
+                            continue;
+                        }
+                    }
+                    // circuit tidak ada di model (atau sudah ter-disconnect):
+                    // baris tombstone tinggal dibersihkan
+                    Task.Run(() => client.DeleteCircuitAsync(rowId)).GetAwaiter().GetResult();
+                }
+
+                report.AppendLine(
+                    $"{panelCode}: {panelUpdated} circuit diupdate"
+                    + (panelDisconnected > 0 ? $", {panelDisconnected} di-disconnect" : ""));
             }
 
             tx.Commit();
 
             TaskDialog.Show("Panel Schedule Sync — Pull",
                 $"Selesai. {updated} circuit diupdate.\n"
+                + $"{disconnected} circuit di-disconnect dari panel (dihapus lewat website).\n"
+                + (failedDisconnect > 0
+                    ? $"{failedDisconnect} circuit GAGAL di-disconnect — coba Pull lagi.\n"
+                    : "")
                 + $"{skippedCable} nilai kabel dilewati (param 'Wire Size' read-only).\n"
                 + $"{skippedFunction} nilai function dilewati (param 'Load Name'/'Circuit Description' "
                 + "tidak ada atau read-only).\n\n"

@@ -31,7 +31,9 @@ export default function PanelPage() {
     if (e1 || e2) setError((e1 ?? e2)!.message);
     else {
       setPanel(p);
-      setCircuits((c ?? []) as Circuit[]);
+      // circuit_no negatif = circuit Revit yang dihapus lewat website, menunggu
+      // di-disconnect oleh "Pull from Website" — jangan ditampilkan/dihitung
+      setCircuits(((c ?? []) as Circuit[]).filter((row) => row.circuit_no > 0));
       setError(null);
       if (p?.project_id) {
         const { data: proj } = await supabase

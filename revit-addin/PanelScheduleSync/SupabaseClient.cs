@@ -74,10 +74,11 @@ public class SupabaseClient
         string panelId = panels.RootElement[0].GetProperty("id").GetString()!;
         // hanya baris milik Revit — baris manual website tidak punya circuit
         // fisik di model, jangan sampai menimpa circuit Revit yang kebetulan
-        // bernomor sama
+        // bernomor sama. circuit_no > 0 = baris hidup (negatif = tombstone
+        // hapus, ditangani GetDeletedCircuitsByPanelCodeAsync).
         JsonDocument rows = await SendAsync(
             HttpMethod.Get,
-            $"circuits?panel_id=eq.{panelId}&source=eq.revit&select=circuit_no,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
+            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=gt.0&select=circuit_no,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
 
         var list = new List<CircuitData>();
         foreach (JsonElement row in rows.RootElement.EnumerateArray())
@@ -92,6 +93,34 @@ public class SupabaseClient
             });
         }
         return list;
+    }
+
+    /// <summary>
+    /// Circuit Revit yang dihapus lewat website (tombstone: circuit_no
+    /// negatif). Return (id baris, nomor circuit asli) — dipakai Pull untuk
+    /// disconnect circuit dari panel lalu membersihkan barisnya.
+    /// </summary>
+    public async Task<List<(string Id, int No)>> GetDeletedCircuitsByPanelCodeAsync(string panelCode)
+    {
+        JsonDocument panels = await SendAsync(
+            HttpMethod.Get,
+            $"panels?panel_code=eq.{Uri.EscapeDataString(panelCode)}&select=id&order=updated_at.desc&limit=1");
+        if (panels.RootElement.GetArrayLength() == 0) return [];
+
+        string panelId = panels.RootElement[0].GetProperty("id").GetString()!;
+        JsonDocument rows = await SendAsync(
+            HttpMethod.Get,
+            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=lt.0&select=id,circuit_no");
+
+        var list = new List<(string, int)>();
+        foreach (JsonElement row in rows.RootElement.EnumerateArray())
+            list.Add((row.GetProperty("id").GetString()!, -row.GetProperty("circuit_no").GetInt32()));
+        return list;
+    }
+
+    public async Task DeleteCircuitAsync(string id)
+    {
+        await SendAsync(HttpMethod.Delete, $"circuits?id=eq.{id}");
     }
 
     /// <summary>Push semua panel. Return ringkasan buat TaskDialog.</summary>
