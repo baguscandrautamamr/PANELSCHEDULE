@@ -19,7 +19,13 @@ Extract artifact, lalu copy ke folder addins Revit 2025:
     └── PanelScheduleSync.dll
 ```
 
-Buka Revit → tab **Panel Schedule** → **Push to Website**.
+Buka Revit → tab **Panel Schedule**:
+
+- **Push to Website** — extract & kirim data panel ke Supabase (pilih project
+  tujuan di dialog; FUNCTION diisi dari family Revit yang terhubung di circuit).
+- **Pull from Website** — tarik perubahan breaker & kabel yang diedit di
+  website kembali ke model (rating circuit, param "Breaker Type" / "Wire Size"
+  kalau ada dan tidak read-only).
 
 ## Cara kerja
 

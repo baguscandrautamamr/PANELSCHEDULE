@@ -59,6 +59,37 @@ public class SupabaseClient
         return names;
     }
 
+    /// <summary>
+    /// Ambil circuits panel dari website (match panel_code, panel yang
+    /// terakhir di-update) — dipakai tombol "Pull from Website".
+    /// Return null kalau panel tidak ada di database.
+    /// </summary>
+    public async Task<List<CircuitData>?> GetCircuitsByPanelCodeAsync(string panelCode)
+    {
+        JsonDocument panels = await SendAsync(
+            HttpMethod.Get,
+            $"panels?panel_code=eq.{Uri.EscapeDataString(panelCode)}&select=id&order=updated_at.desc&limit=1");
+        if (panels.RootElement.GetArrayLength() == 0) return null;
+
+        string panelId = panels.RootElement[0].GetProperty("id").GetString()!;
+        JsonDocument rows = await SendAsync(
+            HttpMethod.Get,
+            $"circuits?panel_id=eq.{panelId}&select=circuit_no,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
+
+        var list = new List<CircuitData>();
+        foreach (JsonElement row in rows.RootElement.EnumerateArray())
+        {
+            list.Add(new CircuitData
+            {
+                CircuitNo = row.GetProperty("circuit_no").GetInt32(),
+                BreakerType = row.GetProperty("breaker_type").GetString(),
+                BreakerRating = row.GetProperty("breaker_rating").GetString(),
+                OutgoingCable = row.GetProperty("outgoing_cable").GetString(),
+            });
+        }
+        return list;
+    }
+
     /// <summary>Push semua panel. Return ringkasan buat TaskDialog.</summary>
     public async Task<string> PushAsync(string projectName, List<PanelData> panels)
     {

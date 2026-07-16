@@ -32,6 +32,18 @@ public class App : IExternalApplication
         };
 
         panel.AddItem(button);
+
+        var pullButton = new PushButtonData(
+            "PanelSchedulePullFromWebsite",
+            "Pull from\nWebsite",
+            assemblyPath,
+            "PanelScheduleSync.PullCommand")
+        {
+            ToolTip = "Tarik perubahan breaker & kabel yang diedit di website "
+                      + "kembali ke circuit di model Revit.",
+        };
+        panel.AddItem(pullButton);
+
         return Result.Succeeded;
     }
 

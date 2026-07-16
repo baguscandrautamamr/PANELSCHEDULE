@@ -27,6 +27,25 @@ export default function Home() {
     setLoading(false);
   }
 
+  async function deleteProject(proj: Project) {
+    if (
+      !confirm(
+        `Hapus project "${proj.name}" beserta SEMUA panel & circuit di dalamnya? Tidak bisa dibatalkan.`
+      )
+    )
+      return;
+    // panels -> circuits -> fixtures cascade; project_id tidak cascade, jadi hapus panel dulu
+    const { error: e1 } = await supabase
+      .from("panels")
+      .delete()
+      .eq("project_id", proj.id);
+    const { error: e2 } = e1
+      ? { error: e1 }
+      : await supabase.from("projects").delete().eq("id", proj.id);
+    if (e1 || e2) alert(`Gagal menghapus: ${(e1 ?? e2)!.message}`);
+    else load();
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
     load();
@@ -102,14 +121,23 @@ export default function Home() {
         if (list.length === 0) return null;
         return (
           <section key={proj.id} className="mb-8">
-            <h2 className="mb-3 text-lg font-semibold">
-              {proj.name}
-              {proj.client && (
-                <span className="ml-2 text-sm font-normal text-neutral-500">
-                  {proj.client}
-                </span>
-              )}
-            </h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">
+                {proj.name}
+                {proj.client && (
+                  <span className="ml-2 text-sm font-normal text-neutral-500">
+                    {proj.client}
+                  </span>
+                )}
+              </h2>
+              <button
+                onClick={() => deleteProject(proj)}
+                title={`Hapus project ${proj.name}`}
+                className="rounded border border-red-200 bg-white px-2.5 py-1 text-xs text-red-600 transition hover:border-red-500 hover:bg-red-50"
+              >
+                🗑 Hapus project
+              </button>
+            </div>
             <ul className="grid gap-3 sm:grid-cols-2">
               {list.map((panel) => (
                 <li key={panel.id}>

@@ -108,7 +108,6 @@ public class PanelExtractor(Document doc)
         var circuit = new CircuitData
         {
             CircuitNo = circuitNo,
-            FunctionName = isSpare ? "SPARE" : cs.LoadName,
             // TODO: kalau ada shared parameter "Breaker Type" (RCBO/MCCB), itu yang dipakai
             BreakerType = cs.LookupParameter("Breaker Type")?.AsString()
                           ?? $"MCB {poles}P",
@@ -116,6 +115,15 @@ public class PanelExtractor(Document doc)
             OutgoingCable = cs.LookupParameter("Wire Size")?.AsString(),
             IsSpare = isSpare,
         };
+
+        if (!isSpare)
+            circuit.Fixtures = ExtractFixtures(cs);
+
+        // FUNCTION sync dengan family Revit: nama diambil dari family
+        // fixture yang terhubung di circuit (bukan load classification).
+        circuit.FunctionName = isSpare
+            ? "SPARE"
+            : BuildFunctionName(circuit.Fixtures) ?? cs.LoadName;
 
         if (!isSpare && watt > 0)
         {
@@ -140,10 +148,22 @@ public class PanelExtractor(Document doc)
             }
         }
 
-        if (!isSpare)
-            circuit.Fixtures = ExtractFixtures(cs);
-
         return circuit;
+    }
+
+    /// <summary>
+    /// Nama function dari family Revit yang terhubung di circuit —
+    /// distinct family name, digabung " + " kalau campuran.
+    /// </summary>
+    private static string? BuildFunctionName(List<FixtureData> fixtures)
+    {
+        if (fixtures.Count == 0) return null;
+        var families = fixtures
+            .Select(f => f.FixtureType)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct()
+            .ToList();
+        return families.Count == 0 ? null : string.Join(" + ", families);
     }
 
     /// <summary>Group element di circuit per family + type (= type family Revit).</summary>
