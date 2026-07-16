@@ -104,17 +104,17 @@ export default function PanelPage() {
       )}
 
       {panel && (
-        <div className="print-area flex flex-col gap-6 lg:flex-row lg:items-start">
-          <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm lg:w-[380px] lg:flex-shrink-0">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-neutral-500">
+        <div className="print-area rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <div className="mb-4 max-w-xl border-b border-neutral-200 pb-3">
+            <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-500">
               Single Line Diagram
             </h2>
-            <PanelSLD panel={panel} circuits={circuits} />
-          </section>
+            <PanelSLD panel={panel} />
+          </div>
 
-          <section className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <div className="overflow-x-auto">
             <PanelScheduleTable panel={panel} circuits={circuits} />
-          </section>
+          </div>
         </div>
       )}
     </main>

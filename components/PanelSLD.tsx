@@ -1,52 +1,17 @@
 "use client";
 
-import type { Circuit, Panel } from "@/lib/types";
+import type { Panel } from "@/lib/types";
 
 /**
- * SLD dinamis (SVG) — dirender dari data circuits yang sama dengan tabel.
- * Source panel -> incoming cable -> main breaker -> fuse + lampu R/Y/B ->
- * bus vertikal -> breaker per circuit -> outgoing cable.
+ * Strip header SLD (SVG) — source panel -> incoming cable -> main breaker
+ * -> MCB rating -> fuse + lampu R/Y/B. Cabang per-circuit TIDAK di sini —
+ * itu dirender sebagai kolom pertama di PanelScheduleTable supaya baris
+ * breaker selalu sejajar persis dengan baris circuit di tabel (satu <tr>
+ * yang sama), tidak bisa meleset walau ada baris yang wrap 2 baris teks.
  */
-
-const ROW_H = 30;
-const BUS_X = 190;
-const TOP = 132;
-
-function BreakerGlyph({
-  x,
-  y,
-  type,
-}: {
-  x: number;
-  y: number;
-  type: string | null;
-}) {
-  const t = (type ?? "").toUpperCase();
-  const isMccb = t.includes("MCCB");
-  const isRcbo = t.includes("RCBO");
-  return (
-    <g stroke="currentColor" strokeWidth={1.2} fill="none">
-      {/* kontak breaker */}
-      <line x1={x} y1={y} x2={x + 10} y2={y} />
-      <line x1={x + 10} y1={y} x2={x + 26} y2={y - 9} />
-      <line x1={x + 26} y1={y} x2={x + 40} y2={y} />
-      {/* MCCB: kotak; RCBO: lingkaran residual */}
-      {isMccb && <rect x={x + 6} y={y - 13} width={26} height={18} />}
-      {isRcbo && <circle cx={x + 33} cy={y} r={4.5} />}
-    </g>
-  );
-}
-
-export default function PanelSLD({
-  panel,
-  circuits,
-}: {
-  panel: Panel;
-  circuits: Circuit[];
-}) {
-  const rows = circuits;
-  const height = TOP + rows.length * ROW_H + 24;
-  const width = 780;
+export default function PanelSLD({ panel }: { panel: Panel }) {
+  const width = 640;
+  const height = 112;
   const lampColors: [string, string][] = [
     ["R", "#dc2626"],
     ["Y", "#eab308"],
@@ -70,33 +35,32 @@ export default function PanelSLD({
         </g>
       )}
 
-      {/* incoming: source -> main breaker -> bus */}
+      {/* incoming: source -> main breaker */}
       <text x={16} y={58} fontSize={10} fill="currentColor">
         {panel.source_panel ?? "FROM ..."}
       </text>
-      <line x1={16} y1={64} x2={BUS_X} y2={64} stroke="currentColor" strokeWidth={1.2} />
-      {/* incoming cable label */}
+      <line x1={16} y1={64} x2={190} y2={64} stroke="currentColor" strokeWidth={1.2} />
       <text x={16} y={78} fontSize={9} fill="currentColor">
         {panel.incoming_cable ?? ""}
       </text>
+
       {/* main breaker */}
-      <BreakerGlyph x={96} y={64} type={panel.main_breaker_type} />
+      <g stroke="currentColor" strokeWidth={1.2} fill="none">
+        <line x1={96} y1={64} x2={106} y2={64} />
+        <line x1={106} y1={64} x2={122} y2={55} />
+        <line x1={122} y1={64} x2={136} y2={64} />
+        {(panel.main_breaker_type ?? "").toUpperCase().includes("MCCB") && (
+          <rect x={102} y={51} width={26} height={18} />
+        )}
+      </g>
       <text x={96} y={48} fontSize={9} fill="currentColor">
         {panel.main_breaker_type}
       </text>
 
-      {/* MCB Rating panel — nilai sync dari param Rating main breaker di Revit */}
+      {/* MCB Rating — sync dari param Rating main breaker di Revit */}
       {panel.main_breaker_rating && (
         <g>
-          <rect
-            x={72}
-            y={76}
-            width={92}
-            height={30}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={0.75}
-          />
+          <rect x={72} y={76} width={92} height={30} fill="none" stroke="currentColor" strokeWidth={0.75} />
           <text x={78} y={89} fontSize={7.5} fill="currentColor">
             MCB Rating
           </text>
@@ -107,69 +71,26 @@ export default function PanelSLD({
       )}
 
       {/* fuse + indicator lamp R/Y/B */}
-      <line x1={160} y1={64} x2={160} y2={30} stroke="currentColor" strokeWidth={1} />
-      <rect x={156} y={34} width={8} height={14} fill="none" stroke="currentColor" />
-      <text x={168} y={32} fontSize={8} fill="currentColor">
+      <line x1={190} y1={64} x2={190} y2={30} stroke="currentColor" strokeWidth={1} />
+      <rect x={186} y={34} width={8} height={14} fill="none" stroke="currentColor" />
+      <text x={202} y={32} fontSize={8} fill="currentColor">
         {panel.fuse_rating ?? "F"}
       </text>
       {lampColors.map(([label, color], i) => (
         <g key={label}>
-          <line
-            x1={160}
-            y1={30}
-            x2={124 + i * 18}
-            y2={18}
-            stroke="currentColor"
-            strokeWidth={0.75}
-          />
-          <circle cx={124 + i * 18} cy={14} r={5} fill="none" stroke={color} strokeWidth={1.5} />
-          <text x={124 + i * 18} y={17} textAnchor="middle" fontSize={7} fill={color}>
+          <line x1={190} y1={30} x2={228 + i * 18} y2={18} stroke="currentColor" strokeWidth={0.75} />
+          <circle cx={228 + i * 18} cy={14} r={5} fill="none" stroke={color} strokeWidth={1.5} />
+          <text x={228 + i * 18} y={17} textAnchor="middle" fontSize={7} fill={color}>
             {label}
           </text>
         </g>
       ))}
 
-      {/* bus vertikal */}
-      <line
-        x1={BUS_X}
-        y1={64}
-        x2={BUS_X}
-        y2={TOP + (rows.length - 1) * ROW_H}
-        stroke="currentColor"
-        strokeWidth={2.5}
-      />
-
-      {/* branch per circuit */}
-      {rows.map((c, i) => {
-        const y = TOP + i * ROW_H;
-        return (
-          <g key={c.id} className={c.is_spare ? "opacity-40" : ""}>
-            <BreakerGlyph x={BUS_X} y={y} type={c.breaker_type} />
-            <line
-              x1={BUS_X + 40}
-              y1={y}
-              x2={BUS_X + 96}
-              y2={y}
-              stroke="currentColor"
-              strokeWidth={1}
-            />
-            {/* panah keluar */}
-            <polygon
-              points={`${BUS_X + 96},${y - 3.5} ${BUS_X + 104},${y} ${BUS_X + 96},${y + 3.5}`}
-              fill="currentColor"
-            />
-            <text x={BUS_X + 112} y={y + 3} fontSize={9} fill="currentColor">
-              {c.breaker_type} {c.breaker_rating}
-            </text>
-            <text x={BUS_X + 210} y={y + 3} fontSize={9} fill="currentColor">
-              {c.outgoing_cable ?? ""}
-            </text>
-            <text x={BUS_X + 360} y={y + 3} fontSize={9} fontWeight={600} fill="currentColor">
-              {c.function_name}
-            </text>
-          </g>
-        );
-      })}
+      {/* stub bus turun ke tabel di bawahnya */}
+      <line x1={190} y1={64} x2={190} y2={height} stroke="currentColor" strokeWidth={2.5} />
+      <text x={198} y={height - 4} fontSize={8} fill="currentColor" className="opacity-70">
+        ke breaker (tabel di bawah) ▼
+      </text>
     </svg>
   );
 }

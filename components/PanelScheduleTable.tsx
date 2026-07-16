@@ -62,6 +62,42 @@ function CellInput({
   );
 }
 
+/**
+ * Cabang SLD per baris — bus vertikal + breaker + panah keluar, digambar
+ * di dalam <td> baris circuit itu sendiri (bukan diagram terpisah) supaya
+ * SELALU sejajar dengan baris circuit-nya, walau tingginya beda-beda
+ * (mis. FUNCTION yang wrap 2 baris). Posisi absolute + inset-0 dipakai
+ * karena <td> tinggi barisnya "auto", bukan persentase yang bisa dipetakan.
+ */
+function MiniCircuitBranch({
+  breakerType,
+  dim,
+}: {
+  breakerType: string | null;
+  dim: boolean;
+}) {
+  const t = (breakerType ?? "").toUpperCase();
+  const isMccb = t.includes("MCCB");
+  const isRcbo = t.includes("RCBO");
+  return (
+    <div className="pointer-events-none absolute inset-0">
+      <svg
+        viewBox="0 0 40 100"
+        preserveAspectRatio="none"
+        className={`h-full w-full text-neutral-700 ${dim ? "opacity-30" : ""}`}
+      >
+        <g stroke="currentColor" strokeWidth={3} fill="none" vectorEffect="non-scaling-stroke">
+          <line x1={8} y1={0} x2={8} y2={100} />
+          <line x1={8} y1={50} x2={24} y2={50} />
+          {isMccb && <rect x={10} y={40} width={12} height={20} />}
+          {isRcbo && <circle cx={16} cy={50} r={6} />}
+        </g>
+        <polygon points="24,44 34,50 24,56" fill="currentColor" />
+      </svg>
+    </div>
+  );
+}
+
 const emptyNewCircuit = {
   function_name: "",
   breaker_type: "MCB 1P",
@@ -406,6 +442,9 @@ export default function PanelScheduleTable({
       <table className="sched-table w-full border-collapse text-xs">
         <thead>
           <tr className="bg-neutral-100">
+            <th rowSpan={3} className="w-10 px-0 py-1 align-middle text-[9px] font-normal text-neutral-400">
+              SLD
+            </th>
             <th rowSpan={3} className="px-2 py-1 align-middle">
               NO.
             </th>
@@ -462,6 +501,9 @@ export default function PanelScheduleTable({
               .join(" ");
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
+                <td className="relative w-10 p-0">
+                  <MiniCircuitBranch breakerType={c.breaker_type} dim={c.is_spare} />
+                </td>
                 <td className="px-1 py-0.5 text-center">
                   <div className="flex items-center justify-center gap-1">
                     {editing && (
@@ -559,7 +601,7 @@ export default function PanelScheduleTable({
         </tbody>
         <tfoot className="font-semibold">
           <tr className="bg-neutral-50">
-            <td colSpan={4} className="px-2 py-1 text-right">
+            <td colSpan={5} className="px-2 py-1 text-right">
               TOTAL
             </td>
             {cols.map((col) => (
@@ -571,7 +613,7 @@ export default function PanelScheduleTable({
             <td className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={4 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
               SUB TOTAL
             </td>
             <td className="px-2 py-1 text-right">{nf.format(subR)}</td>
@@ -580,7 +622,7 @@ export default function PanelScheduleTable({
             <td className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={4 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
               TOTAL WATT
             </td>
             <td colSpan={3} className="px-2 py-1 text-center">
@@ -589,7 +631,7 @@ export default function PanelScheduleTable({
             <td className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={4 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
               TOTAL VA
             </td>
             <td colSpan={3} className="px-2 py-1 text-center">
@@ -598,7 +640,7 @@ export default function PanelScheduleTable({
             <td className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={4 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
               CONNECTED AMPERE
             </td>
             <td colSpan={3} className="px-2 py-1 text-center">
