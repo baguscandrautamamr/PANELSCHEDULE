@@ -28,10 +28,7 @@ function LoginForm() {
         onSubmit={onSubmit}
         className="w-full max-w-sm rounded-lg border border-neutral-300 bg-white p-6 shadow-sm"
       >
-        <h1 className="text-xl font-bold">Panel Schedule</h1>
-        <p className="mb-6 mt-1 text-sm text-neutral-600">
-          Masuk dengan akun Supabase Auth
-        </p>
+        <h1 className="mb-6 text-xl font-bold">Panel Schedule</h1>
 
         <label className="mb-1 block text-sm font-medium">Email</label>
         <input
@@ -66,10 +63,6 @@ function LoginForm() {
         >
           {busy ? "Masuk…" : "Masuk"}
         </button>
-
-        <p className="mt-4 text-xs text-neutral-500">
-          Akun dibuat lewat Supabase Dashboard → Authentication → Users.
-        </p>
       </form>
     </main>
   );
