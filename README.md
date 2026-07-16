@@ -16,7 +16,7 @@ Revit (grouped circuits) -> C# add-in "Push to Website" (manual)
 
 - **Frontend**: Next.js (App Router) + Tailwind, deploy di **Vercel**
 - **Database**: Supabase (project `ptkhwoabeclqbfemxgnj`) + Realtime
-- **Revit bridge**: C# add-in Revit 2025 (fase berikutnya)
+- **Revit bridge**: C# add-in Revit 2023 (.NET Framework 4.8) & 2025 (.NET 8)
 
 ## Setup (sekali saja)
 

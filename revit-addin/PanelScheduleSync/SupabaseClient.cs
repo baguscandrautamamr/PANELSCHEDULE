@@ -21,6 +21,9 @@ public class SupabaseClient
     private static readonly HttpClient Http = new();
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = false };
 
+    // HttpMethod.Patch tidak ada di .NET Framework 4.8 (Revit 2023)
+    private static readonly HttpMethod PatchMethod = new("PATCH");
+
     private readonly string _url;
     private readonly string _key;
 
@@ -232,7 +235,7 @@ public class SupabaseClient
         {
             if (!revitNos.Contains(no)) continue; // nomornya masih bebas — biarkan
 
-            await SendAsync(HttpMethod.Patch, $"circuits?id=eq.{id}",
+            await SendAsync(PatchMethod, $"circuits?id=eq.{id}",
                 new Dictionary<string, object?> { ["circuit_no"] = nextNo });
             nextNo++;
             moved++;
@@ -283,7 +286,7 @@ public class SupabaseClient
         if (existing.RootElement.GetArrayLength() > 0)
         {
             string id = existing.RootElement[0].GetProperty("id").GetString()!;
-            await SendAsync(HttpMethod.Patch, $"panels?id=eq.{id}", body);
+            await SendAsync(PatchMethod, $"panels?id=eq.{id}", body);
             return id;
         }
 
