@@ -140,16 +140,17 @@ export default function PanelScheduleTable({
                 : "border-neutral-300 bg-white text-neutral-700 hover:border-blue-500"
             }`}
           >
-            {editing ? "✓ Selesai edit" : "✎ Edit breaker & kabel"}
+            {editing ? "✓ Selesai edit" : "✎ Edit function, breaker & kabel"}
           </button>
         </div>
       </div>
 
       {editing && (
         <p className="mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
-          Klik kolom BREAKER / CABLE untuk mengubah, tekan Enter atau klik di
-          luar untuk menyimpan. Jalankan <b>Pull from Website</b> di Revit
-          add-in untuk menarik perubahan ini ke model.
+          Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah, tekan Enter
+          atau klik di luar untuk menyimpan. Jalankan <b>Pull from Website</b>{" "}
+          di Revit add-in untuk menarik perubahan ini ke model — kalau FUNCTION
+          tidak berubah di Revit, parameternya read-only di family tersebut.
         </p>
       )}
 
@@ -213,7 +214,19 @@ export default function PanelScheduleTable({
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
                 <td className="px-2 py-0.5 text-center">{c.circuit_no}</td>
-                <td className="px-2 py-0.5">{c.function_name}</td>
+                <td className="px-1 py-0.5">
+                  {editing ? (
+                    <CellInput
+                      key={`f-${c.id}-${c.function_name}`}
+                      initial={c.function_name}
+                      onCommit={(v) =>
+                        updateCircuit(c.id, { function_name: v || c.function_name })
+                      }
+                    />
+                  ) : (
+                    c.function_name
+                  )}
+                </td>
                 <td className="px-1 py-0.5 text-center whitespace-nowrap">
                   {editing ? (
                     <CellInput

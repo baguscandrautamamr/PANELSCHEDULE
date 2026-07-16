@@ -8,9 +8,10 @@ using Autodesk.Revit.UI;
 namespace PanelScheduleSync;
 
 /// <summary>
-/// Tombol "Pull from Website": tarik perubahan breaker & kabel yang diedit
-/// di website kembali ke model Revit (rating circuit, param "Breaker Type"
-/// dan "Wire Size" kalau ada dan tidak read-only).
+/// Tombol "Pull from Website": tarik perubahan yang diedit di website
+/// kembali ke model Revit — rating circuit, "Breaker Type", "Wire Size",
+/// dan FUNCTION (Load Name / Circuit Description) kalau parameternya ada
+/// dan tidak read-only.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 public partial class PullCommand : IExternalCommand
@@ -20,7 +21,7 @@ public partial class PullCommand : IExternalCommand
         Document doc = commandData.Application.ActiveUIDocument.Document;
         var client = new SupabaseClient();
         var report = new StringBuilder();
-        int updated = 0, skipped = 0;
+        int updated = 0, skippedCable = 0, skippedFunction = 0;
 
         try
         {
@@ -86,8 +87,15 @@ public partial class PullCommand : IExternalCommand
                     // kabel -> param "Wire Size" (di banyak project read-only karena
                     // dihitung dari wire type — kalau begitu dilewati)
                     bool cableSet = TrySetText(cs, "Wire Size", row.OutgoingCable);
-                    if (!cableSet && !string.IsNullOrWhiteSpace(row.OutgoingCable)) skipped++;
+                    if (!cableSet && !string.IsNullOrWhiteSpace(row.OutgoingCable)) skippedCable++;
                     changed |= cableSet;
+
+                    // FUNCTION -> "Load Name" / "Circuit Description" (nama beda-beda
+                    // tiap versi Revit/family) — kalau tidak ada param yang cocok dan
+                    // bisa ditulis, dilewati (berarti read-only, dihitung ke user).
+                    bool functionSet = TrySetFunctionName(cs, row.FunctionName);
+                    if (!functionSet && !string.IsNullOrWhiteSpace(row.FunctionName)) skippedFunction++;
+                    changed |= functionSet;
 
                     if (changed)
                     {
@@ -102,7 +110,11 @@ public partial class PullCommand : IExternalCommand
             tx.Commit();
 
             TaskDialog.Show("Panel Schedule Sync — Pull",
-                $"Selesai. {updated} circuit diupdate, {skipped} nilai kabel dilewati (parameter read-only).\n\n{report}");
+                $"Selesai. {updated} circuit diupdate.\n"
+                + $"{skippedCable} nilai kabel dilewati (param 'Wire Size' read-only).\n"
+                + $"{skippedFunction} nilai function dilewati (param 'Load Name'/'Circuit Description' "
+                + "tidak ada atau read-only).\n\n"
+                + report);
             return Result.Succeeded;
         }
         catch (Exception ex)
@@ -120,6 +132,21 @@ public partial class PullCommand : IExternalCommand
         if (p is null || p.IsReadOnly || p.StorageType != StorageType.String) return false;
         if (p.AsString() == value) return false;
         return p.Set(value);
+    }
+
+    /// <summary>
+    /// FUNCTION di website biasanya di-generate dari family fixture, jadi di
+    /// Revit tidak ada satu nama parameter baku — coba beberapa kandidat yang
+    /// umum dipakai buat override nama load di panel schedule.
+    /// </summary>
+    private static bool TrySetFunctionName(ElectricalSystem cs, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        foreach (string candidate in new[] { "Load Name", "Circuit Description", "Comments" })
+        {
+            if (TrySetText(cs, candidate, value)) return true;
+        }
+        return false;
     }
 
     private static int ParseFirstNumber(string? s)

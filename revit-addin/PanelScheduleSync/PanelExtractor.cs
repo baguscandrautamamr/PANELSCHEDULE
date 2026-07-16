@@ -96,7 +96,11 @@ public class PanelExtractor(Document doc)
 
     private CircuitData ExtractCircuit(ElectricalSystem cs, double powerFactor)
     {
+        // Space (slot dicadangkan, belum ada load) diperlakukan seperti spare:
+        // tidak ada watt/fixture, tapi tetap punya circuit_no sendiri.
         bool isSpare = cs.CircuitType == CircuitType.Spare;
+        bool isSpace = cs.CircuitType == CircuitType.Space;
+        bool isEmpty = isSpare || isSpace;
         int poles = SafePoles(cs);
 
         int circuitNo = ParseCircuitNumber(cs.CircuitNumber);
@@ -113,19 +117,19 @@ public class PanelExtractor(Document doc)
                           ?? $"MCB {poles}P",
             BreakerRating = $"{cs.Rating:0}A",
             OutgoingCable = cs.LookupParameter("Wire Size")?.AsString(),
-            IsSpare = isSpare,
+            IsSpare = isEmpty,
         };
 
-        if (!isSpare)
+        if (!isEmpty)
             circuit.Fixtures = ExtractFixtures(cs);
 
         // FUNCTION sync dengan family Revit: nama diambil dari family
         // fixture yang terhubung di circuit (bukan load classification).
-        circuit.FunctionName = isSpare
-            ? "SPARE"
+        circuit.FunctionName = isSpare ? "SPARE"
+            : isSpace ? "SPACE"
             : BuildFunctionName(circuit.Fixtures) ?? cs.LoadName;
 
-        if (!isSpare && watt > 0)
+        if (!isEmpty && watt > 0)
         {
             if (poles >= 3)
             {

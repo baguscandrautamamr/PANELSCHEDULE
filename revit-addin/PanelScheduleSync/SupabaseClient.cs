@@ -74,7 +74,7 @@ public class SupabaseClient
         string panelId = panels.RootElement[0].GetProperty("id").GetString()!;
         JsonDocument rows = await SendAsync(
             HttpMethod.Get,
-            $"circuits?panel_id=eq.{panelId}&select=circuit_no,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
+            $"circuits?panel_id=eq.{panelId}&select=circuit_no,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
 
         var list = new List<CircuitData>();
         foreach (JsonElement row in rows.RootElement.EnumerateArray())
@@ -82,6 +82,7 @@ public class SupabaseClient
             list.Add(new CircuitData
             {
                 CircuitNo = row.GetProperty("circuit_no").GetInt32(),
+                FunctionName = row.GetProperty("function_name").GetString() ?? "",
                 BreakerType = row.GetProperty("breaker_type").GetString(),
                 BreakerRating = row.GetProperty("breaker_rating").GetString(),
                 OutgoingCable = row.GetProperty("outgoing_cable").GetString(),

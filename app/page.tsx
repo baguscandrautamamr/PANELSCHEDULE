@@ -46,6 +46,18 @@ export default function Home() {
     else load();
   }
 
+  async function deletePanel(panel: Panel) {
+    if (
+      !confirm(
+        `Hapus panel "${panel.panel_code}" beserta semua circuit-nya? Tidak bisa dibatalkan.`
+      )
+    )
+      return;
+    const { error } = await supabase.from("panels").delete().eq("id", panel.id);
+    if (error) alert(`Gagal menghapus: ${error.message}`);
+    else load();
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch
     load();
@@ -140,10 +152,10 @@ export default function Home() {
             </div>
             <ul className="grid gap-3 sm:grid-cols-2">
               {list.map((panel) => (
-                <li key={panel.id}>
+                <li key={panel.id} className="relative">
                   <Link
                     href={`/panel/${panel.id}`}
-                    className="block rounded-lg border border-neutral-300 bg-white p-4 shadow-sm transition hover:border-blue-500 hover:shadow"
+                    className="block rounded-lg border border-neutral-300 bg-white p-4 pr-9 shadow-sm transition hover:border-blue-500 hover:shadow"
                   >
                     <div className="flex items-baseline justify-between">
                       <span className="font-bold">
@@ -164,6 +176,17 @@ export default function Home() {
                       {panel.freq}
                     </div>
                   </Link>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deletePanel(panel);
+                    }}
+                    title={`Hapus panel ${panel.panel_code}`}
+                    className="absolute bottom-3 right-3 z-10 rounded border border-red-200 bg-white px-1.5 py-1 text-xs text-red-500 transition hover:border-red-500 hover:bg-red-50 hover:text-red-700"
+                  >
+                    🗑
+                  </button>
                 </li>
               ))}
             </ul>
