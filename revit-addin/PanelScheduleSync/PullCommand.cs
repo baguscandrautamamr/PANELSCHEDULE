@@ -202,6 +202,12 @@ public partial class PullCommand : IExternalCommand
         return m.Success && double.TryParse(m.Value, out double v) ? v : null;
     }
 
+#if NET8_0_OR_GREATER
     [GeneratedRegex(@"\d+(\.\d+)?")]
     private static partial Regex AmpereRegex();
+#else
+    // [GeneratedRegex] belum ada di .NET Framework 4.8 (Revit 2023)
+    private static readonly Regex AmpereRegexCompiled = new(@"\d+(\.\d+)?", RegexOptions.Compiled);
+    private static Regex AmpereRegex() => AmpereRegexCompiled;
+#endif
 }

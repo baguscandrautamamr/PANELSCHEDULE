@@ -1,4 +1,4 @@
-# Panel Schedule Sync — Revit Add-in (Revit 2025)
+# Panel Schedule Sync — Revit Add-in (Revit 2023 & 2025)
 
 Tombol **"Push to Website"** di ribbon tab **Panel Schedule**: extract data panel +
 circuit dari model, lalu push ke Supabase → langsung muncul realtime di website.
@@ -6,17 +6,23 @@ circuit dari model, lalu push ke Supabase → langsung muncul realtime di websit
 ## Download build
 
 Build otomatis di GitHub Actions (workflow **Build Revit Add-in**):
-repo → tab **Actions** → run terbaru → download artifact **PanelScheduleSync-Revit2025**.
+repo → tab **Actions** → run terbaru → download artifact sesuai versi Revit:
+
+- **PanelScheduleSync-Revit2025** (.NET 8)
+- **PanelScheduleSync-Revit2023** (.NET Framework 4.8 — berisi beberapa DLL
+  tambahan seperti `System.Text.Json.dll`, semuanya wajib ikut di-copy)
 
 ## Install
 
-Extract artifact, lalu copy ke folder addins Revit 2025:
+Extract artifact, lalu copy ke folder addins sesuai versi Revit
+(`2023` atau `2025`):
 
 ```
-%AppData%\Autodesk\Revit\Addins\2025\
+%AppData%\Autodesk\Revit\Addins\<versi>\
 ├── PanelScheduleSync.addin
 └── PanelScheduleSync\
-    └── PanelScheduleSync.dll
+    ├── PanelScheduleSync.dll
+    └── (DLL lain dari artifact — khusus build 2023)
 ```
 
 Buka Revit → tab **Panel Schedule**:

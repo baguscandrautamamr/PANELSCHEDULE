@@ -23,13 +23,28 @@ jobs:
       - name: Package add-in
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path package/PanelScheduleSync -Force | Out-Null
-          Copy-Item revit-addin/PanelScheduleSync/bin/Release/PanelScheduleSync.dll package/PanelScheduleSync/
-          Copy-Item revit-addin/PanelScheduleSync.addin package/
-          Copy-Item revit-addin/README.md package/INSTALL.md
+          # Revit 2025 = net8.0-windows, Revit 2023 = net48 (plus dependensi
+          # System.Text.Json dkk yang harus ikut di folder add-in)
+          $targets = @(
+            @{ rv = "2025"; tfm = "net8.0-windows" },
+            @{ rv = "2023"; tfm = "net48" }
+          )
+          foreach ($t in $targets) {
+            $dir = "package-$($t.rv)/PanelScheduleSync"
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Copy-Item "revit-addin/PanelScheduleSync/bin/Release/$($t.tfm)/*.dll" $dir
+            Copy-Item revit-addin/PanelScheduleSync.addin "package-$($t.rv)/"
+            Copy-Item revit-addin/README.md "package-$($t.rv)/INSTALL.md"
+          }
 
-      - name: Upload artifact
+      - name: Upload artifact (Revit 2025)
         uses: actions/upload-artifact@v4
         with:
           name: PanelScheduleSync-Revit2025
-          path: package
+          path: package-2025
+
+      - name: Upload artifact (Revit 2023)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanelScheduleSync-Revit2023
+          path: package-2023
