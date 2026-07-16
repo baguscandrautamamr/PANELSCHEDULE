@@ -290,7 +290,13 @@ export default function PanelScheduleTable({
         circuits.length > 0 ? Math.max(...circuits.map((c) => c.circuit_no)) + 1 : 1;
       const { error } = await supabase
         .from("circuits")
-        .insert({ ...patch, panel_id: panel.id, circuit_no: nextNo, is_spare: false });
+        .insert({
+          ...patch,
+          panel_id: panel.id,
+          circuit_no: nextNo,
+          is_spare: false,
+          source: "manual",
+        });
       if (error) {
         alert(`Gagal menambah load: ${error.message}`);
         return;
@@ -413,7 +419,10 @@ export default function PanelScheduleTable({
           add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — kalau tidak
           berubah di Revit, parameternya read-only di family tersebut. Urutan
           (▲▼) dan hasil <b>Rebalance Loads</b> tersimpan di website saja;
-          Push berikutnya dari Revit akan menimpa sesuai kondisi model asli.
+          Push berikutnya dari Revit akan menimpa sesuai kondisi model asli —
+          kecuali load manual (badge <b>M</b>) yang selalu dipertahankan;
+          nomornya otomatis bergeser ke bawah kalau bentrok dengan circuit
+          Revit baru.
         </p>
       )}
 
@@ -612,6 +621,14 @@ export default function PanelScheduleTable({
                       </div>
                     )}
                     <span>{c.circuit_no}</span>
+                    {c.source === "manual" && (
+                      <span
+                        title="Load manual dari website — tidak ditimpa/dihapus saat Push dari Revit; nomornya bisa bergeser ke bawah kalau bentrok dengan circuit Revit baru"
+                        className="rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-700"
+                      >
+                        M
+                      </span>
+                    )}
                     {editing && (
                       <button
                         onClick={() => openEditForm(c)}

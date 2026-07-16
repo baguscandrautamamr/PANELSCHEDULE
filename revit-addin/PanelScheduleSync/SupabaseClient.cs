@@ -72,9 +72,12 @@ public class SupabaseClient
         if (panels.RootElement.GetArrayLength() == 0) return null;
 
         string panelId = panels.RootElement[0].GetProperty("id").GetString()!;
+        // hanya baris milik Revit — baris manual website tidak punya circuit
+        // fisik di model, jangan sampai menimpa circuit Revit yang kebetulan
+        // bernomor sama
         JsonDocument rows = await SendAsync(
             HttpMethod.Get,
-            $"circuits?panel_id=eq.{panelId}&select=circuit_no,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
+            $"circuits?panel_id=eq.{panelId}&source=eq.revit&select=circuit_no,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
 
         var list = new List<CircuitData>();
         foreach (JsonElement row in rows.RootElement.EnumerateArray())
@@ -101,8 +104,16 @@ public class SupabaseClient
         {
             string panelId = await UpsertPanelAsync(projectId, panel);
 
-            // replace-all: hapus circuit lama (fixtures ikut via cascade), insert ulang
-            await SendAsync(HttpMethod.Delete, $"circuits?panel_id=eq.{panelId}");
+            // baris manual (dibuat lewat "+ Tambah Load" di website) tidak boleh
+            // ikut terhapus — ambil dulu sebelum replace baris milik Revit
+            List<(string Id, int No)> manualRows = await GetManualCircuitsAsync(panelId);
+
+            // replace hanya baris milik Revit (fixtures ikut via cascade)
+            await SendAsync(HttpMethod.Delete, $"circuits?panel_id=eq.{panelId}&source=eq.revit");
+
+            // kalau nomor baris manual bentrok dengan circuit Revit yang mau masuk,
+            // geser ke nomor setelah yang terakhir (isi baris tidak berubah)
+            int movedManual = await RenumberConflictingManualAsync(panel, manualRows);
 
             if (panel.Circuits.Count > 0)
             {
@@ -119,6 +130,7 @@ public class SupabaseClient
                     ["phase_t"] = c.PhaseT,
                     ["remarks"] = c.Remarks,
                     ["is_spare"] = c.IsSpare,
+                    ["source"] = "revit",
                 }).ToList();
 
                 JsonDocument inserted = await SendAsync(
@@ -147,10 +159,56 @@ public class SupabaseClient
                     await SendAsync(HttpMethod.Post, "circuit_fixtures", fixtureRows);
             }
 
-            summary.AppendLine($"{panel.PanelCode}: {panel.Circuits.Count} circuit");
+            string manualInfo = manualRows.Count > 0
+                ? $" (+{manualRows.Count} load manual dipertahankan"
+                  + (movedManual > 0 ? $", {movedManual} digeser nomornya)" : ")")
+                : "";
+            summary.AppendLine($"{panel.PanelCode}: {panel.Circuits.Count} circuit{manualInfo}");
         }
 
         return summary.ToString();
+    }
+
+    /// <summary>Baris circuit yang dibuat manual di website (source = 'manual').</summary>
+    private async Task<List<(string Id, int No)>> GetManualCircuitsAsync(string panelId)
+    {
+        JsonDocument rows = await SendAsync(
+            HttpMethod.Get,
+            $"circuits?panel_id=eq.{panelId}&source=eq.manual&select=id,circuit_no&order=circuit_no");
+
+        var list = new List<(string, int)>();
+        foreach (JsonElement row in rows.RootElement.EnumerateArray())
+            list.Add((row.GetProperty("id").GetString()!, row.GetProperty("circuit_no").GetInt32()));
+        return list;
+    }
+
+    /// <summary>
+    /// Geser circuit_no baris manual yang bentrok dengan circuit Revit yang akan
+    /// di-insert, ke nomor setelah nomor terakhir yang terpakai — dipanggil SETELAH
+    /// baris Revit lama dihapus dan SEBELUM baris baru masuk, supaya tidak menabrak
+    /// unique (panel_id, circuit_no). Return jumlah baris yang digeser.
+    /// </summary>
+    private async Task<int> RenumberConflictingManualAsync(
+        PanelData panel, List<(string Id, int No)> manualRows)
+    {
+        if (manualRows.Count == 0) return 0;
+
+        var revitNos = panel.Circuits.Select(c => c.CircuitNo).ToHashSet();
+        var taken = new HashSet<int>(revitNos);
+        taken.UnionWith(manualRows.Select(m => m.No));
+        int nextNo = taken.Count > 0 ? taken.Max() + 1 : 1;
+
+        int moved = 0;
+        foreach ((string id, int no) in manualRows.OrderBy(m => m.No))
+        {
+            if (!revitNos.Contains(no)) continue; // nomornya masih bebas — biarkan
+
+            await SendAsync(HttpMethod.Patch, $"circuits?id=eq.{id}",
+                new Dictionary<string, object?> { ["circuit_no"] = nextNo });
+            nextNo++;
+            moved++;
+        }
+        return moved;
     }
 
     private async Task<string> EnsureProjectAsync(string name)
