@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Windows.Media.Imaging;
 using Autodesk.Revit.UI;
 
 namespace PanelScheduleSync;
@@ -6,6 +7,22 @@ namespace PanelScheduleSync;
 /// <summary>Ribbon tab "Panel Schedule" dengan tombol "Push to Website".</summary>
 public class App : IExternalApplication
 {
+    /// <summary>Load icon PNG yang di-embed di assembly (Resources\*.png).</summary>
+    private static BitmapImage? LoadIcon(string fileName)
+    {
+        using var stream = Assembly.GetExecutingAssembly()
+            .GetManifestResourceStream($"PanelScheduleSync.Resources.{fileName}");
+        if (stream is null) return null;
+
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.StreamSource = stream;
+        image.EndInit();
+        image.Freeze();
+        return image;
+    }
+
     public Result OnStartup(UIControlledApplication application)
     {
         const string tabName = "Panel Schedule";
@@ -29,6 +46,8 @@ public class App : IExternalApplication
         {
             ToolTip = "Extract data panel & circuit dari model, lalu push ke Supabase "
                       + "(website panel schedule). Trigger manual, tidak auto-sync.",
+            LargeImage = LoadIcon("push32.png"),
+            Image = LoadIcon("push16.png"),
         };
 
         panel.AddItem(button);
@@ -41,6 +60,8 @@ public class App : IExternalApplication
         {
             ToolTip = "Tarik perubahan breaker & kabel yang diedit di website "
                       + "kembali ke circuit di model Revit.",
+            LargeImage = LoadIcon("pull32.png"),
+            Image = LoadIcon("pull16.png"),
         };
         panel.AddItem(pullButton);
 

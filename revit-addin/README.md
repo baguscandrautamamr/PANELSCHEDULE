@@ -3,6 +3,9 @@
 Tombol **"Push to Website"** di ribbon tab **Panel Schedule**: extract data panel +
 circuit dari model, lalu push ke Supabase → langsung muncul realtime di website.
 
+> Catatan internal proyek (keputusan desain, parameter Revit yang dipakai,
+> aturan sinkronisasi): [CATATAN-PROYEK.md](CATATAN-PROYEK.md)
+
 ## Download build
 
 Build otomatis di GitHub Actions (workflow **Build Revit Add-in**):
