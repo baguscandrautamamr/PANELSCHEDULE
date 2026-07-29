@@ -131,12 +131,14 @@ export async function exportPanelToExcel(
   const breakerText = (c: Circuit) =>
     [c.breaker_type, c.breaker_rating].filter(Boolean).join(" ");
 
+  const revitTotalOf = (c: Circuit) =>
+    (Number(c.phase_r) || 0) + (Number(c.phase_s) || 0) + (Number(c.phase_t) || 0);
+
   /**
-   * Watt per unit satu kolom fixture — hanya dipakai kalau nilainya konsisten
-   * di semua circuit. Kalau kosong atau beda-beda, kolomnya tidak bisa dipakai
-   * sebagai pengali dan circuit yang memakainya jatuh ke angka Revit apa adanya.
+   * Watt/unit satu kolom fixture menurut data (kolom watt_per_unit) — hanya
+   * dipakai kalau nilainya konsisten di semua circuit.
    */
-  const fixtureWatt = (key: string): number | null => {
+  const wattFromData = (key: string): number | null => {
     const seen = new Set<number>();
     for (const c of circuits) {
       for (const fx of c.circuit_fixtures ?? []) {
@@ -147,7 +149,47 @@ export async function exportPanelToExcel(
     }
     return seen.size === 1 ? [...seen][0] : null;
   };
-  const wattByCol = cols.map((col) => fixtureWatt(col.key));
+
+  /**
+   * Watt/unit yang diturunkan dari data yang ada: pada circuit yang bebannya
+   * hanya berasal dari SATU kolom fixture, watt/unit = demand load Revit / qty.
+   * Dipakai kalau watt_per_unit kosong di database (mis. family Revit tidak
+   * punya parameter "Wattage"), dan hanya kalau semua circuit semacam itu
+   * sepakat pada angka yang sama.
+   */
+  const wattFromLoads = (key: string): number | null => {
+    const candidates: number[] = [];
+    for (const c of circuits) {
+      const total = revitTotalOf(c);
+      if (total <= 0) continue;
+      const used = cols.filter((other) => qtyOf(c, other.key) > 0);
+      if (used.length !== 1 || used[0].key !== key) continue;
+      const qty = qtyOf(c, key);
+      if (qty > 0) candidates.push(total / qty);
+    }
+    if (candidates.length === 0) return null;
+    const min = Math.min(...candidates);
+    const max = Math.max(...candidates);
+    // tidak sepakat -> jangan dipakai, lebih baik kosong daripada salah
+    if (max - min > Math.max(0.5, max * 0.01)) return null;
+    return Math.round(((min + max) / 2) * 10) / 10;
+  };
+
+  const wattByCol: (number | null)[] = [];
+  const wattIsDerived: boolean[] = [];
+  for (const col of cols) {
+    const fromData = wattFromData(col.key);
+    const fromLoads = wattFromLoads(col.key);
+    // angka dari data diutamakan, kecuali terbukti tidak cocok dengan beban
+    // circuit yang cuma memakai kolom ini
+    const trustData =
+      fromData != null &&
+      (fromLoads == null || Math.abs(fromData - fromLoads) <= Math.max(0.5, fromLoads * 0.01));
+    const watt = trustData ? fromData : (fromLoads ?? fromData);
+    wattByCol.push(watt);
+    wattIsDerived.push(watt != null && watt !== fromData);
+  }
+  const derivedCount = wattIsDerived.filter(Boolean).length;
 
   const wFunc = autoWidth(
     [...circuits.map((c) => c.function_name), "FUNCTION"],
@@ -315,14 +357,21 @@ export async function exportPanelToExcel(
     });
     for (let col = 1; col <= nCols; col++) {
       const cell = row.getCell(col);
+      const isFix = col >= C_FIX0 && col < C_R;
       cell.border = THIN;
-      cell.font = { bold: true, size: 9 };
-      cell.fill = col >= C_FIX0 && col < C_R ? INPUT_FILL : SUM_FILL;
+      // watt hasil turunan (bukan dari data) ditulis miring supaya kelihatan
+      // bahwa angkanya hasil hitungan balik, bukan dari parameter Revit
+      cell.font = {
+        bold: true,
+        size: 9,
+        italic: isFix && wattIsDerived[col - C_FIX0],
+      };
+      cell.fill = isFix ? INPUT_FILL : SUM_FILL;
       cell.alignment = {
         vertical: "middle",
         horizontal: col <= C_CABLE ? "right" : "center",
       };
-      if (col >= C_FIX0 && col < C_R) cell.numFmt = "#,##0.#";
+      if (isFix) cell.numFmt = "#,##0.#";
     }
     ws.mergeCells(r, 1, r, C_CABLE);
     row.height = 14;
@@ -515,8 +564,13 @@ export async function exportPanelToExcel(
       ? [
           `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(qty kolom FIXTURE x baris WATT / UNIT di baris ${rWattUnit}), dibagi 3 untuk circuit 3 fase seimbang`,
           fallbackRows > 0
-            ? `Catatan: ${fallbackRows} circuit tetap memakai angka demand load dari Revit (bukan formula) karena hasil qty x watt/unit tidak sama dengan nilai Revit — mis. watt/unit tidak ada di data atau bebannya tidak berasal dari fixture.`
+            ? `Catatan: ${fallbackRows} circuit tetap memakai angka demand load dari Revit (bukan formula) karena hasil qty x watt/unit tidak sama dengan nilai Revit — mis. watt/unit tidak diketahui atau bebannya tidak berasal dari fixture.`
             : "Semua circuit yang berbeban memakai formula qty x watt/unit.",
+          ...(derivedCount > 0
+            ? [
+                `Angka WATT / UNIT yang dicetak MIRING (${derivedCount} kolom) tidak ada di data Revit — diturunkan dari demand load / qty pada circuit yang hanya memakai kolom itu. Sebaiknya dicek ulang terhadap spesifikasi fixture.`,
+              ]
+            : []),
         ]
       : []),
     `SUB TOTAL R/S/T (${cellRef(C_R, rSub)}..${cellRef(C_R + 2, rSub)}) = SUM per kolom fase, baris ${bodyTop}-${bodyBottom}`,
