@@ -5,6 +5,7 @@ import type { Circuit, Panel } from "@/lib/types";
 import { fixtureKey } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
+import { is3Phase, panelVoltage } from "@/lib/panelCalc";
 
 const nf = new Intl.NumberFormat("en-US");
 const nf1 = new Intl.NumberFormat("en-US", {
@@ -392,10 +393,10 @@ export default function PanelScheduleTable({
 
   const pf = Number(panel.power_factor ?? 0.8) || 0.8;
   const totalVA = totalWatt / pf;
-  const voltLL = parseFloat(panel.voltage ?? "400") || 400;
-  const is3ph = (panel.phase ?? "3PH").toUpperCase().includes("3");
-  // 3PH: I = VA / (√3 × V L-L); 1PH: I = VA / V L-N (≈230V)
-  const ampere = is3ph ? totalVA / (Math.sqrt(3) * voltLL) : totalVA / 230;
+  const is3ph = is3Phase(panel);
+  const volt = panelVoltage(panel);
+  // 3PH: I = VA / (√3 × V L-L); 1PH: I = VA / V L-N
+  const ampere = is3ph ? totalVA / (Math.sqrt(3) * volt) : totalVA / volt;
 
   const headerLine1 = [
     panel.source_panel,
@@ -852,7 +853,7 @@ export default function PanelScheduleTable({
         </p>
         <p>
           CONNECTED AMPERE = TOTAL VA / {is3ph ? "(√3 × V)" : "V"} ={" "}
-          {nf1.format(totalVA)} / {is3ph ? `(1.732 × ${voltLL})` : "230"} ={" "}
+          {nf1.format(totalVA)} / {is3ph ? `(1.732 × ${volt})` : volt} ={" "}
           {nf1.format(ampere)} A
         </p>
       </div>

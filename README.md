@@ -48,9 +48,13 @@ npm run dev   # http://localhost:3000
 - List project & panel (realtime)
 - Halaman panel: **tabel schedule** dengan
   - kolom fixture **dinamis** dari data (tidak di-hardcode, beda tiap project)
-  - demand load per fase **R/S/T** (1PH isi satu kolom, 3PH balance)
+  - nomor & urutan baris sama dengan panel schedule Revit (nomor circuit Revit
+    dipakai apa adanya, termasuk yang berprefix seperti `(D)/7`)
+  - demand load per fase **R/S/T** mengikuti fase asli circuit di Revit
+    (kolom A/B/C panel schedule Revit)
   - summary: total qty per fixture, SUB TOTAL R/S/T, TOTAL WATT,
-    TOTAL VA (`watt / cos φ`), CONNECTED AMPERE (`VA / (√3 × V)` untuk 3PH)
+    TOTAL VA (`watt / cos φ`), CONNECTED AMPERE (`VA / (√3 × V L-L)` untuk 3PH;
+    voltage `220/380V` dari Revit → yang dipakai V L-L = 380)
 - **SLD dinamis (SVG)** dari data yang sama: source panel → incoming cable →
   main breaker → fuse + lampu R/Y/B → bus → breaker per circuit
   (MCB 1P/3P, MCCB 3P, RCBO 2P/4P dibedakan simbolnya)

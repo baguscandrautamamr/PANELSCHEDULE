@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
+import { is3Phase, panelVoltage } from "./panelCalc";
 
 interface FixtureCol {
   key: string;
@@ -113,9 +114,9 @@ export async function exportPanelToExcel(
   const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
   const totalWatt = subR + subS + subT;
   const totalVA = totalWatt / pf;
-  const voltLL = parseFloat(panel.voltage ?? "400") || 400;
-  const is3ph = (panel.phase ?? "3PH").toUpperCase().includes("3");
-  const ampere = is3ph ? totalVA / (Math.sqrt(3) * voltLL) : totalVA / 230;
+  const is3ph = is3Phase(panel);
+  const volt = panelVoltage(panel);
+  const ampere = is3ph ? totalVA / (Math.sqrt(3) * volt) : totalVA / volt;
 
   const totalRow = new Array(nCols).fill("");
   totalRow[3] = "TOTAL";
@@ -148,7 +149,7 @@ export async function exportPanelToExcel(
   );
   textRow(
     `CONNECTED AMPERE = TOTAL VA / ${is3ph ? "(akar3 x V)" : "V"} = ${round1(totalVA)} / ${
-      is3ph ? `(1.732 x ${voltLL})` : "230"
+      is3ph ? `(1.732 x ${volt})` : volt
     } = ${round1(ampere)} A`
   );
 

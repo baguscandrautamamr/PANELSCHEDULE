@@ -10,6 +10,15 @@ namespace PanelScheduleSync;
 /// </summary>
 public class PanelExtractor(Document doc)
 {
+    private const double DefaultPowerFactor = 0.8;
+
+    /// <summary>
+    /// Tegangan L-L standar — dipakai buat membulatkan hasil L-N × √3
+    /// (220 × 1.732 = 381 → 380, bukan 381).
+    /// </summary>
+    private static readonly double[] StandardLineVoltages =
+        [208, 220, 240, 380, 400, 415, 440, 480, 690];
+
     public List<PanelData> ExtractAll()
     {
         var result = new List<PanelData>();
@@ -31,10 +40,26 @@ public class PanelExtractor(Document doc)
             ElectricalSystem? supply = mep!.GetElectricalSystems()?
                 .FirstOrDefault(s => s.BaseEquipment is null || s.BaseEquipment.Id != eq.Id);
 
+            // Urutan HARUS deterministik dan sama dengan panel schedule Revit:
+            // GetAssignedElectricalSystems() itu ISet (urutannya acak), jadi
+            // sortir dulu per nomor circuit sebelum dipakai/dinomori ulang.
+            List<ElectricalSystem> systems = [.. assigned
+                .OrderBy(CircuitSortKey)
+                .ThenBy(cs => cs.CircuitNumber ?? "", StringComparer.OrdinalIgnoreCase)];
+
+            // Fase/wire panel dari breaker supply-nya: 1–2 pole = 1 fase,
+            // ≥3 pole = 3 fase. Panel tanpa supply circuit (paling atas)
+            // dianggap 3 fase seperti default sebelumnya.
+            bool is3Phase = supply is null || SafePoles(supply) >= 3;
+            double powerFactor = DerivePowerFactor(systems);
+
             var panel = new PanelData
             {
                 PanelCode = ParamString(eq, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? eq.Name,
-                Location = (doc.GetElement(eq.LevelId) as Level)?.Name,
+                // "Location" panel schedule Revit dulu (parameter di family/
+                // project), fallback ke nama level tempat panelnya berada.
+                Location = ParamStringOrNull(eq.LookupParameter("Location"))
+                    ?? (doc.GetElement(eq.LevelId) as Level)?.Name,
                 BoxType = "BOX PANEL",
                 SourcePanel = supply?.BaseEquipment is { } src
                     ? $"FROM {ParamString(src, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? src.Name}"
@@ -46,12 +71,19 @@ public class PanelExtractor(Document doc)
                 MainBreakerRating = eq.LookupParameter("MCB Rating")?.AsValueString()
                     ?? (supply is not null ? $"{supply.Rating:0.00} A" : null),
                 IncomingCable = supply?.LookupParameter("Wire Size")?.AsString(),
-                // TODO: ambil voltage/phase/wire dari Distribution System kalau perlu
+                Phase = is3Phase ? "3PH" : "1PH",
+                Wire = is3Phase ? "4W" : "2W",
+                PowerFactor = powerFactor,
             };
 
-            foreach (ElectricalSystem cs in assigned.OrderBy(CircuitSortKey))
+            // Voltage & cos φ diambil dari model, bukan default 400V/0.8 —
+            // kalau tidak ketemu, default di PanelData yang dipakai.
+            if (DeriveVoltage(systems, is3Phase) is { } volts)
+                panel.Voltage = volts;
+
+            foreach (ElectricalSystem cs in systems)
             {
-                panel.Circuits.Add(ExtractCircuit(cs, panel.PowerFactor));
+                panel.Circuits.Add(ExtractCircuit(cs, powerFactor));
             }
 
             RenumberDuplicates(panel.Circuits);
@@ -70,14 +102,38 @@ public class PanelExtractor(Document doc)
     }
 
     /// <summary>
-    /// Nomor circuit Revit bisa berupa "7", "1,3,5" (multi-pole), atau kosong
-    /// (spare/space) — ambil angka pertama; 0 kalau tidak ada.
+    /// Nomor circuit Revit bisa berupa "7", "1,3,5" (multi-pole), pakai prefix
+    /// panel — "(D)/7", "DB-FG/7", "L1-7" tergantung setting Circuit Naming di
+    /// Electrical Settings — atau kosong (spare/space).
+    /// Ambil nomor slot pertama; 0 kalau tidak ada angka sama sekali.
     /// </summary>
     private static int ParseCircuitNumber(string? circuitNumber)
     {
         if (string.IsNullOrWhiteSpace(circuitNumber)) return 0;
-        string digits = new(circuitNumber.Trim().TakeWhile(char.IsDigit).ToArray());
-        return int.TryParse(digits, out int n) ? n : 0;
+        string s = circuitNumber!.Trim();
+
+        // Buang prefix: potong tepat setelah karakter terakhir yang bukan
+        // angka/koma ("(D)/1,3,5" -> "1,3,5"), lalu ambil angka pertama =
+        // slot pertama circuit itu. Kalau sisanya tidak ada angka (mis. "1A"),
+        // jatuh ke angka pertama dari string aslinya.
+        int cut = -1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (!char.IsDigit(s[i]) && s[i] != ',') cut = i;
+        }
+
+        int n = FirstNumber(s.Substring(cut + 1));
+        return n > 0 ? n : FirstNumber(s);
+    }
+
+    /// <summary>Angka pertama di dalam string; 0 kalau tidak ada.</summary>
+    private static int FirstNumber(string s)
+    {
+        int i = 0;
+        while (i < s.Length && !char.IsDigit(s[i])) i++;
+        int start = i;
+        while (i < s.Length && char.IsDigit(s[i])) i++;
+        return i > start && int.TryParse(s.Substring(start, i - start), out int n) ? n : 0;
     }
 
     /// <summary>
@@ -135,28 +191,107 @@ public class PanelExtractor(Document doc)
 
         if (!isEmpty && watt > 0)
         {
-            if (poles >= 3)
-            {
-                // 3PH: balance R/S/T
-                double perPhase = Math.Round(watt / 3.0, 1);
-                circuit.PhaseR = perPhase;
-                circuit.PhaseS = perPhase;
-                circuit.PhaseT = perPhase;
-            }
-            else
-            {
-                // 1PH (termasuk RCBO 2P = phase + neutral): isi satu kolom fase.
-                // Aproksimasi fase dari nomor circuit (1,2,3 -> R,S,T bergilir).
-                // TODO: sesuaikan dengan arrangement slot panel kalau perlu presisi.
-                int phaseIndex = circuitNo > 0 ? (circuitNo - 1) % 3 : 0;
-                double w = Math.Round(watt, 1);
-                if (phaseIndex == 0) circuit.PhaseR = w;
-                else if (phaseIndex == 1) circuit.PhaseS = w;
-                else circuit.PhaseT = w;
-            }
+            double[] share = PhaseShare(cs, poles, circuitNo);
+            circuit.PhaseR = Math.Round(watt * share[0], 1);
+            circuit.PhaseS = Math.Round(watt * share[1], 1);
+            circuit.PhaseT = Math.Round(watt * share[2], 1);
         }
 
         return circuit;
+    }
+
+    /// <summary>
+    /// Porsi beban tiap fase (R/S/T), totalnya 1.0.
+    /// Utama: dibaca dari beban per fase milik circuit itu di Revit (parameter
+    /// Apparent Load Phase A/B/C) supaya kolom R/S/T di web sama dengan kolom
+    /// A/B/C di panel schedule Revit — termasuk circuit 2 pole dan 3 pole yang
+    /// tidak balance.
+    /// Fallback (parameter tidak ada / nol / tidak konsisten dengan jumlah pole):
+    /// 3 pole dibagi rata, 1 pole diperkirakan dari nomor slot (1,2,3 → R,S,T).
+    /// </summary>
+    private static double[] PhaseShare(ElectricalSystem cs, int poles, int circuitNo)
+    {
+        double a = ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD_PHASEA, UnitTypeId.VoltAmperes) ?? 0;
+        double b = ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD_PHASEB, UnitTypeId.VoltAmperes) ?? 0;
+        double c = ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD_PHASEC, UnitTypeId.VoltAmperes) ?? 0;
+
+        double sum = a + b + c;
+        int used = (a > 0 ? 1 : 0) + (b > 0 ? 1 : 0) + (c > 0 ? 1 : 0);
+        // 1 pole harus kena 1 fase, 2 pole 2 fase, 3 pole 3 fase — kalau tidak
+        // cocok berarti parameternya tidak bisa dipercaya, pakai fallback.
+        if (sum > 0 && used == Math.Min(poles, 3))
+            return [a / sum, b / sum, c / sum];
+
+        if (poles >= 3) return [1 / 3.0, 1 / 3.0, 1 / 3.0];
+
+        return (circuitNo > 0 ? (circuitNo - 1) % 3 : 0) switch
+        {
+            0 => [1, 0, 0],
+            1 => [0, 1, 0],
+            _ => [0, 0, 1],
+        };
+    }
+
+    /// <summary>
+    /// cos φ panel = Σ True Load / Σ Apparent Load semua circuit-nya, supaya
+    /// TOTAL VA di web sama dengan total VA panel schedule Revit (bukan selalu
+    /// dibagi 0.8). Dibatasi 0.5–1.0; default kalau datanya tidak ada.
+    /// </summary>
+    private static double DerivePowerFactor(List<ElectricalSystem> systems)
+    {
+        double watt = 0, va = 0;
+        foreach (ElectricalSystem cs in systems)
+        {
+            double? w = ParamDouble(cs, BuiltInParameter.RBS_ELEC_TRUE_LOAD, UnitTypeId.Watts);
+            double? a = ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes);
+            if (w > 0 && a > 0)
+            {
+                watt += w!.Value;
+                va += a!.Value;
+            }
+        }
+
+        if (va <= 0) return DefaultPowerFactor;
+        return Math.Round(Math.Min(1.0, Math.Max(0.5, watt / va)), 3);
+    }
+
+    /// <summary>
+    /// Voltage panel dari circuit-nya (parameter Voltage), format seperti
+    /// "Volts" di panel schedule Revit: "220/380V" (L-N/L-L) atau "380V".
+    /// Circuit 1 pole = L-N, ≥2 pole = L-L. Kalau di panel cuma ada circuit
+    /// 1 pole, L-L dihitung L-N × √3 lalu dibulatkan ke tegangan standar
+    /// terdekat. Null = tidak ketemu (pakai default PanelData).
+    /// </summary>
+    private static string? DeriveVoltage(List<ElectricalSystem> systems, bool is3Phase)
+    {
+        double lineToNeutral = 0, lineToLine = 0;
+        foreach (ElectricalSystem cs in systems)
+        {
+            double v = ParamDouble(cs, BuiltInParameter.RBS_ELEC_VOLTAGE, UnitTypeId.Volts) ?? 0;
+            if (v <= 0) continue;
+
+            if (SafePoles(cs) >= 2)
+                lineToLine = lineToLine == 0 ? v : Math.Min(lineToLine, v);
+            else
+                lineToNeutral = lineToNeutral == 0 ? v : Math.Min(lineToNeutral, v);
+        }
+
+        if (lineToNeutral <= 0 && lineToLine <= 0) return null;
+        if (!is3Phase) return $"{(lineToNeutral > 0 ? lineToNeutral : lineToLine):0}V";
+        if (lineToLine <= 0) lineToLine = SnapToStandardVoltage(lineToNeutral * Math.Sqrt(3));
+
+        return lineToNeutral > 0 && Math.Abs(lineToLine - lineToNeutral) >= 1
+            ? $"{lineToNeutral:0}/{lineToLine:0}V"
+            : $"{lineToLine:0}V";
+    }
+
+    private static double SnapToStandardVoltage(double volts)
+    {
+        foreach (double std in StandardLineVoltages)
+        {
+            if (Math.Abs(std - volts) / volts <= 0.03) return std;
+        }
+        return Math.Round(volts);
     }
 
     /// <summary>
@@ -215,9 +350,14 @@ public class PanelExtractor(Document doc)
         }
     }
 
-    private static string? ParamString(Element el, BuiltInParameter bip)
+    private static string? ParamString(Element el, BuiltInParameter bip) =>
+        ParamStringOrNull(el.get_Parameter(bip));
+
+    /// <summary>Isi parameter sebagai teks (AsString, fallback AsValueString); null kalau kosong.</summary>
+    private static string? ParamStringOrNull(Parameter? p)
     {
-        string? v = el.get_Parameter(bip)?.AsString();
+        string? v = p?.AsString();
+        if (string.IsNullOrWhiteSpace(v)) v = p?.AsValueString();
         return string.IsNullOrWhiteSpace(v) ? null : v;
     }
 
