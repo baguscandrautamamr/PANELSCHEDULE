@@ -5,6 +5,7 @@ import type { Circuit, Panel } from "@/lib/types";
 import { fixtureKey } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
+import { exportPanelToDxf } from "@/lib/exportDxf";
 import { is3Phase, panelVoltage } from "@/lib/panelCalc";
 
 const nf = new Intl.NumberFormat("en-US");
@@ -136,7 +137,7 @@ export default function PanelScheduleTable({
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newCircuit, setNewCircuit] = useState(emptyNewCircuit);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<"excel" | "dxf" | null>(null);
   const cols = buildFixtureColumns(circuits);
 
   async function updateCircuit(id: string, patch: Record<string, string | null>) {
@@ -368,13 +369,24 @@ export default function PanelScheduleTable({
   }
 
   async function handleExportExcel() {
-    setExporting(true);
+    setExporting("excel");
     try {
       await exportPanelToExcel(panel, circuits, cols, projectName ?? null);
     } catch (e) {
       alert(`Gagal export Excel: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      setExporting(false);
+      setExporting(null);
+    }
+  }
+
+  function handleExportDxf() {
+    setExporting("dxf");
+    try {
+      exportPanelToDxf(panel, circuits, cols, projectName ?? null);
+    } catch (e) {
+      alert(`Gagal export DXF: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -463,10 +475,18 @@ export default function PanelScheduleTable({
             </button>
             <button
               onClick={handleExportExcel}
-              disabled={exporting}
+              disabled={exporting !== null}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500 disabled:opacity-50"
             >
-              {exporting ? "Menyiapkan…" : "📊 Export Excel"}
+              {exporting === "excel" ? "Menyiapkan…" : "📊 Export Excel"}
+            </button>
+            <button
+              onClick={handleExportDxf}
+              disabled={exporting !== null}
+              title="DXF R12 (AutoCAD/BricsCAD/Revit) — SLD + tabel, skala 1:1 mm, simbol breaker jadi block"
+              className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500 disabled:opacity-50"
+            >
+              {exporting === "dxf" ? "Menyiapkan…" : "📐 Export CAD (DXF)"}
             </button>
           </div>
         </div>

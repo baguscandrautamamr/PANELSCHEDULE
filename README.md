@@ -1,7 +1,7 @@
 # Panel Schedule Web
 
 Website realtime panel schedule dari Revit: tabel (format Archetype/Barry Callebaut),
-SLD dinamis, dan (nanti) export Excel / PDF / DXF.
+SLD dinamis, dan export Excel / PDF / DXF.
 
 **Alur data:**
 
@@ -63,6 +63,13 @@ npm run dev   # http://localhost:3000
   saat Push dari Revit — kalau nomornya bentrok dengan circuit Revit baru,
   otomatis digeser ke nomor setelah circuit terakhir (isinya tetap).
   Pull from Website juga melewati baris manual (tidak ditulis ke Revit).
+- **Export CAD (DXF)**: satu file DXF R12 berisi SLD + tabel schedule lengkap,
+  skala **1:1 dalam milimeter**, siap dibuka di AutoCAD / BricsCAD / DraftSight /
+  LibreCAD atau di-import ke Revit. Simbol breaker jadi **block** (`BRK_MCB_1P`,
+  `BRK_MCCB_3P`, `BRK_RCBO_2P`, … sesuai jenis + jumlah pole yang benar-benar
+  dipakai) supaya bisa diganti/dihitung massal di CAD, dan tiap jenis garis
+  punya layer sendiri: `PS-SLD`, `PS-BREAKER`, `PS-TABLE-GRID`, `PS-TEXT`,
+  `PS-SUMMARY`, `PS-TITLE`, `PS-FRAME`.
 - **Hapus circuit dari web** (🗑 di mode edit): load manual langsung terhapus
   dan nomor manual lain naik mengisi celah; circuit Revit ditandai hapus
   (tombstone `circuit_no` negatif) lalu di-**disconnect dari panel** saat
@@ -72,9 +79,10 @@ npm run dev   # http://localhost:3000
 ## Roadmap
 
 1. ✅ Schema Supabase + scaffold Next.js + realtime
-2. 🔜 Rendering tabel & SLD match 1:1 template drawing + C# add-in "Push to Website"
-3. 🔜 Export Excel (exceljs) + PDF
-4. 🔜 Export DXF (breaker symbol jadi block)
+2. ✅ Rendering tabel & SLD match template drawing + C# add-in "Push to Website"
+3. ✅ Export Excel (exceljs) + PDF (print browser)
+4. ✅ Export DXF (breaker symbol jadi block)
+5. 🔜 RLS Supabase per user (sekarang masih permisif — lihat `supabase/schema.sql`)
 
 ## Struktur
 
@@ -85,6 +93,9 @@ components/PanelScheduleTable.tsx
 components/PanelSLD.tsx
 lib/supabase.ts           # client Supabase (publishable key)
 lib/types.ts
+lib/exportExcel.ts        # export .xlsx (exceljs)
+lib/dxf.ts                # penulis DXF R12 (tanpa dependensi)
+lib/exportDxf.ts          # layout SLD + tabel ke DXF
 supabase/schema.sql       # jalankan di SQL Editor
 supabase/seed.sql         # data contoh P-011.4
 ```
