@@ -56,7 +56,10 @@ public class PanelExtractor(Document doc)
             var panel = new PanelData
             {
                 PanelCode = ParamString(eq, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? eq.Name,
-                Location = (doc.GetElement(eq.LevelId) as Level)?.Name,
+                // "Location" panel schedule Revit dulu (parameter di family/
+                // project), fallback ke nama level tempat panelnya berada.
+                Location = ParamStringOrNull(eq.LookupParameter("Location"))
+                    ?? (doc.GetElement(eq.LevelId) as Level)?.Name,
                 BoxType = "BOX PANEL",
                 SourcePanel = supply?.BaseEquipment is { } src
                     ? $"FROM {ParamString(src, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? src.Name}"
@@ -347,9 +350,14 @@ public class PanelExtractor(Document doc)
         }
     }
 
-    private static string? ParamString(Element el, BuiltInParameter bip)
+    private static string? ParamString(Element el, BuiltInParameter bip) =>
+        ParamStringOrNull(el.get_Parameter(bip));
+
+    /// <summary>Isi parameter sebagai teks (AsString, fallback AsValueString); null kalau kosong.</summary>
+    private static string? ParamStringOrNull(Parameter? p)
     {
-        string? v = el.get_Parameter(bip)?.AsString();
+        string? v = p?.AsString();
+        if (string.IsNullOrWhiteSpace(v)) v = p?.AsValueString();
         return string.IsNullOrWhiteSpace(v) ? null : v;
     }
 
