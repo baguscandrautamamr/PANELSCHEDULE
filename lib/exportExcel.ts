@@ -28,6 +28,12 @@ const SUM_FILL: ExcelJS.Fill = {
   pattern: "solid",
   fgColor: { argb: "FFF2F2F2" },
 };
+/** sel yang boleh diubah user (jadi acuan formula) — dibedakan warnanya */
+const INPUT_FILL: ExcelJS.Fill = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFFFF2CC" },
+};
 
 /** Lebar kolom Excel (satuan ~jumlah karakter) dari isi terpanjang. */
 function autoWidth(values: (string | null | undefined)[], min: number, max: number) {
@@ -181,9 +187,38 @@ export async function exportPanelToExcel(
   if (panel.incoming_cable) titleRow(panel.incoming_cable);
 
   const pf = Number(panel.power_factor ?? 0.8) || 0.8;
+  const is3ph = is3Phase(panel);
+  const volt = panelVoltage(panel);
   titleRow(
     `${[panel.voltage, panel.phase, panel.wire, panel.freq].filter(Boolean).join(", ")} - cos phi ${pf}`
   );
+
+  // -------------------------------------------------- parameter perhitungan
+  // Dibuat sebagai sel angka tersendiri, bukan cuma teks: TOTAL VA dan
+  // CONNECTED AMPERE di bawah mengacu ke sel ini, jadi kalau cos phi atau
+  // tegangan diubah di Excel, hasilnya ikut berubah.
+  function paramRow(label: string, value: number, numFmt: string) {
+    r += 1;
+    const row = ws.getRow(r);
+    row.getCell(1).value = label;
+    row.getCell(1).font = { size: 10, bold: true };
+    row.getCell(1).alignment = { vertical: "middle", horizontal: "right" };
+    row.getCell(1).border = THIN;
+    const cell = row.getCell(C_BRK);
+    cell.value = value;
+    cell.numFmt = numFmt;
+    cell.font = { size: 10 };
+    cell.fill = INPUT_FILL;
+    cell.border = THIN;
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+    ws.getRow(r).getCell(2).border = THIN;
+    ws.mergeCells(r, 1, r, C_FUNC);
+    row.height = 15;
+    return r;
+  }
+
+  const rPf = paramRow("cos phi", pf, "0.00");
+  const rVolt = paramRow(`V ${is3ph ? "(L-L)" : "(L-N)"}`, volt, "#,##0");
   r += 1; // baris kosong pemisah
 
   // ---------------------------------------------------------------- header
@@ -247,6 +282,7 @@ export async function exportPanelToExcel(
   ws.getRow(headBottom).height = Math.min(160, Math.max(30, (fixLines + 1) * 11 + 4));
 
   // ---------------------------------------------------------------- isi
+  const bodyTop = r + 1;
   for (const c of circuits) {
     r += 1;
     const row = ws.getRow(r);
@@ -285,15 +321,26 @@ export async function exportPanelToExcel(
     }
   }
 
+  const bodyBottom = r;
+
   // ---------------------------------------------------------------- ringkasan
   const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
   const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
   const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
   const totalWatt = subR + subS + subT;
   const totalVA = totalWatt / pf;
-  const is3ph = is3Phase(panel);
-  const volt = panelVoltage(panel);
   const ampere = is3ph ? totalVA / (Math.sqrt(3) * volt) : totalVA / volt;
+
+  // Semua angka ringkasan ditulis sebagai FORMULA Excel (bukan angka mati),
+  // supaya kalau ada watt/qty yang diedit di Excel, total ikut terhitung ulang.
+  // `result` diisi juga sebagai nilai cache, jadi angkanya sudah kelihatan
+  // walau dibuka di aplikasi yang tidak menghitung ulang formula.
+  const L = (col: number) => ws.getColumn(col).letter;
+  const hasRows = circuits.length > 0;
+  const colRange = (col: number) => `${L(col)}${bodyTop}:${L(col)}${bodyBottom}`;
+  /** Sel formula; kalau panel belum ada circuit, tulis angka biasa saja. */
+  const f = (formula: string, result: number): ExcelJS.CellValue =>
+    hasRows ? { formula, result } : result;
 
   /** Baris ringkasan: label rata kanan + nilai, semua bergaris & tebal. */
   function summaryRow(
@@ -318,6 +365,7 @@ export async function exportPanelToExcel(
     }
     ws.mergeCells(r, 1, r, labelUntil);
     row.height = 16;
+    return r;
   }
 
   // TOTAL qty fixture — label mundur ke kolom CABLE supaya tidak menimpa angkanya
@@ -325,38 +373,74 @@ export async function exportPanelToExcel(
     "TOTAL",
     (row) =>
       cols.forEach((col, i) => {
-        row.getCell(C_FIX0 + i).value =
-          circuits.reduce((s, c) => s + qtyOf(c, col.key), 0) || null;
+        const c = C_FIX0 + i;
+        row.getCell(c).value = f(
+          `SUM(${colRange(c)})`,
+          circuits.reduce((s, cc) => s + qtyOf(cc, col.key), 0)
+        );
       }),
     C_CABLE
   );
-  summaryRow(
+
+  const rSub = summaryRow(
     "SUB TOTAL",
     (row) => {
-      row.getCell(C_R).value = round1(subR);
-      row.getCell(C_R + 1).value = round1(subS);
-      row.getCell(C_R + 2).value = round1(subT);
+      row.getCell(C_R).value = f(`SUM(${colRange(C_R)})`, round1(subR));
+      row.getCell(C_R + 1).value = f(`SUM(${colRange(C_R + 1)})`, round1(subS));
+      row.getCell(C_R + 2).value = f(`SUM(${colRange(C_R + 2)})`, round1(subT));
     },
     C_R - 1
   );
-  for (const [label, value] of [
-    ["TOTAL WATT", round1(totalWatt)],
-    ["TOTAL VA", round1(totalVA)],
-    ["CONNECTED AMPERE", round1(ampere)],
-  ] as const) {
-    summaryRow(label, (row) => (row.getCell(C_R).value = value), C_R - 1);
-    ws.mergeCells(r, C_R, r, C_R + 2);
-  }
+
+  // TOTAL WATT = SUB TOTAL R + S + T
+  const rWatt = summaryRow(
+    "TOTAL WATT",
+    (row) =>
+      (row.getCell(C_R).value = f(
+        `SUM(${L(C_R)}${rSub}:${L(C_R + 2)}${rSub})`,
+        round1(totalWatt)
+      )),
+    C_R - 1
+  );
+  ws.mergeCells(rWatt, C_R, rWatt, C_R + 2);
+
+  // TOTAL VA = TOTAL WATT / cos phi (sel parameter)
+  const rVA = summaryRow(
+    "TOTAL VA",
+    (row) =>
+      (row.getCell(C_R).value = f(
+        `${L(C_R)}${rWatt}/${L(C_BRK)}$${rPf}`,
+        round1(totalVA)
+      )),
+    C_R - 1
+  );
+  ws.mergeCells(rVA, C_R, rVA, C_R + 2);
+
+  // CONNECTED AMPERE = TOTAL VA / (akar3 x V) untuk 3 fase, atau / V untuk 1 fase
+  const ampereFormula = is3ph
+    ? `${L(C_R)}${rVA}/(SQRT(3)*${L(C_BRK)}$${rVolt})`
+    : `${L(C_R)}${rVA}/${L(C_BRK)}$${rVolt}`;
+  const rAmp = summaryRow(
+    "CONNECTED AMPERE",
+    (row) => (row.getCell(C_R).value = f(ampereFormula, round1(ampere))),
+    C_R - 1
+  );
+  ws.mergeCells(rAmp, C_R, rAmp, C_R + 2);
 
   // ---------------------------------------------------------------- catatan
   r += 1;
+  // Catatan sengaja tidak memuat angka hasil: angkanya hidup di sel formula
+  // di atas, jadi kalau ada yang diedit catatan ini tidak jadi basi.
+  const cellRef = (col: number, row: number) => `${L(col)}${row}`;
   const notes = [
-    "Rumus perhitungan:",
-    `TOTAL WATT = SIGMA(R) + SIGMA(S) + SIGMA(T) = ${round1(subR)} + ${round1(subS)} + ${round1(subT)} = ${round1(totalWatt)} W`,
-    `TOTAL VA = TOTAL WATT / cos phi = ${round1(totalWatt)} / ${pf} = ${round1(totalVA)} VA`,
-    `CONNECTED AMPERE = TOTAL VA / ${is3ph ? "(akar3 x V)" : "V"} = ${round1(totalVA)} / ${
-      is3ph ? `(1.732 x ${volt})` : volt
-    } = ${round1(ampere)} A`,
+    "Rumus perhitungan (angka di baris ringkasan adalah formula Excel, ikut berubah kalau data diedit):",
+    `SUB TOTAL R/S/T (${cellRef(C_R, rSub)}..${cellRef(C_R + 2, rSub)}) = SUM per kolom fase, baris ${bodyTop}-${bodyBottom}`,
+    `TOTAL WATT (${cellRef(C_R, rWatt)}) = SUB TOTAL R + S + T`,
+    `TOTAL VA (${cellRef(C_R, rVA)}) = TOTAL WATT / cos phi (sel ${cellRef(C_BRK, rPf)})`,
+    `CONNECTED AMPERE (${cellRef(C_R, rAmp)}) = TOTAL VA / ${
+      is3ph ? `(SQRT(3) x V L-L)` : "V L-N"
+    } (sel ${cellRef(C_BRK, rVolt)})`,
+    `Sel berwarna kuning (${cellRef(C_BRK, rPf)}, ${cellRef(C_BRK, rVolt)}) boleh diubah — TOTAL VA & CONNECTED AMPERE ikut menyesuaikan.`,
   ];
   notes.forEach((text, i) => {
     r += 1;
