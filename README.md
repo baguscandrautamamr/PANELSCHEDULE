@@ -63,6 +63,11 @@ npm run dev   # http://localhost:3000
   saat Push dari Revit — kalau nomornya bentrok dengan circuit Revit baru,
   otomatis digeser ke nomor setelah circuit terakhir (isinya tetap).
   Pull from Website juga melewati baris manual (tidak ditulis ke Revit).
+- **Export Excel**: header bertingkat (FIXTURE / DEMAND LOAD), garis di semua sel,
+  lebar kolom mengikuti isi. Baris ringkasan ditulis sebagai **formula Excel
+  hidup** (`SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
+  `CONNECTED AMPERE = TOTAL VA / (√3 × V)`), dan `cos φ` + tegangan jadi
+  **sel input berwarna kuning** — diubah di Excel, total ikut terhitung ulang.
 - **Export CAD (DXF)**: satu file DXF R12 berisi SLD + tabel schedule lengkap,
   skala **1:1 dalam milimeter**, siap dibuka di AutoCAD / BricsCAD / DraftSight /
   LibreCAD atau di-import ke Revit. Simbol breaker jadi **block** (`BRK_MCB_1P`,
