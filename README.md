@@ -67,9 +67,15 @@ npm run dev   # http://localhost:3000
   lebar kolom mengikuti isi, dan isinya **formula Excel hidup**:
   - demand load R/S/T per circuit = `SUMPRODUCT(qty fixture × baris WATT / UNIT)`,
     dibagi 3 untuk circuit 3 fase seimbang. Kalau hasil qty × watt tidak sama
-    dengan angka Revit (watt/unit tidak ada di data, beban bukan dari fixture,
-    atau fase tidak seimbang), angka Revit dipakai apa adanya supaya schedule
-    tidak jadi salah — jumlah baris seperti ini dicatat di bawah tabel.
+    dengan angka Revit (beban bukan dari fixture, fase tidak seimbang, atau
+    watt/unit tidak bisa ditentukan), angka Revit dipakai apa adanya supaya
+    schedule tidak jadi salah — jumlah baris seperti ini dicatat di bawah tabel.
+  - baris `WATT / UNIT` diambil dari `circuit_fixtures.watt_per_unit`. Kalau
+    kolom itu kosong di database (family Revit tidak punya parameter `Wattage`),
+    nilainya **diturunkan dari data yang ada**: `demand load ÷ qty` pada circuit
+    yang hanya memakai satu kolom fixture, dan hanya kalau semua circuit
+    semacam itu sepakat. Angka hasil turunan dicetak **miring** + dicatat di
+    bawah tabel supaya bisa diverifikasi.
   - `SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
     `CONNECTED AMPERE = TOTAL VA / (√3 × V)`
   - **sel input berwarna kuning** (`cos φ`, tegangan, baris `WATT / UNIT`) —
