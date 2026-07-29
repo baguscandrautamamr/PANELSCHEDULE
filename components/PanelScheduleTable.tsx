@@ -608,7 +608,7 @@ export default function PanelScheduleTable({
             <th rowSpan={3} className="px-2 py-1 align-middle">
               NO.
             </th>
-            <th rowSpan={3} className="min-w-32 px-2 py-1 text-left align-middle">
+            <th rowSpan={3} className="min-w-52 px-2 py-1 text-left align-middle">
               FUNCTION
             </th>
             <th rowSpan={3} className="min-w-24 px-2 py-1 align-middle">
@@ -625,7 +625,7 @@ export default function PanelScheduleTable({
             <th colSpan={3} className="px-2 py-1">
               DEMAND LOAD (WATT)
             </th>
-            <th rowSpan={3} className="min-w-20 px-2 py-1 align-middle">
+            <th rowSpan={3} className="min-w-16 px-2 py-1 align-middle">
               REMARKS
             </th>
           </tr>
@@ -634,19 +634,22 @@ export default function PanelScheduleTable({
               <th
                 key={col.key}
                 rowSpan={2}
-                className="w-28 min-w-24 max-w-36 overflow-hidden px-1.5 py-1 align-bottom"
+                className="w-28 min-w-16 max-w-44 overflow-hidden px-1 py-1 align-bottom"
               >
-                <div className="whitespace-normal break-words text-[10px] font-semibold leading-tight">
+                {/* overflow-wrap:anywhere — nama family panjang (satu kata)
+                    boleh dipotong supaya kolom bisa menyempit di layar kecil,
+                    tidak memaksa tabel melebar sampai REMARKS terpotong */}
+                <div className="whitespace-normal [overflow-wrap:anywhere] text-[10px] font-semibold leading-tight">
                   {col.type}
                 </div>
-                <div className="mt-0.5 whitespace-normal break-words text-[10px] font-normal leading-tight text-neutral-600">
+                <div className="mt-0.5 whitespace-normal [overflow-wrap:anywhere] text-[10px] font-normal leading-tight text-neutral-600">
                   {col.label ?? (col.watt ? `${col.watt} WATT` : "")}
                 </div>
               </th>
             ))}
-            <th className="w-16 min-w-14 px-2 py-1">R</th>
-            <th className="w-16 min-w-14 px-2 py-1">S</th>
-            <th className="w-16 min-w-14 px-2 py-1">T</th>
+            <th className="w-16 min-w-12 px-1.5 py-1">R</th>
+            <th className="w-16 min-w-12 px-1.5 py-1">S</th>
+            <th className="w-16 min-w-12 px-1.5 py-1">T</th>
           </tr>
           <tr className="bg-neutral-100">
             <th className="px-2 py-0.5 text-[10px] font-normal">WATT</th>
