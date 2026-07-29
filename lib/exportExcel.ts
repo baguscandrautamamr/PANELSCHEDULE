@@ -131,6 +131,24 @@ export async function exportPanelToExcel(
   const breakerText = (c: Circuit) =>
     [c.breaker_type, c.breaker_rating].filter(Boolean).join(" ");
 
+  /**
+   * Watt per unit satu kolom fixture — hanya dipakai kalau nilainya konsisten
+   * di semua circuit. Kalau kosong atau beda-beda, kolomnya tidak bisa dipakai
+   * sebagai pengali dan circuit yang memakainya jatuh ke angka Revit apa adanya.
+   */
+  const fixtureWatt = (key: string): number | null => {
+    const seen = new Set<number>();
+    for (const c of circuits) {
+      for (const fx of c.circuit_fixtures ?? []) {
+        if (fixtureKey(fx) === key && fx.watt_per_unit != null) {
+          seen.add(Number(fx.watt_per_unit));
+        }
+      }
+    }
+    return seen.size === 1 ? [...seen][0] : null;
+  };
+  const wattByCol = cols.map((col) => fixtureWatt(col.key));
+
   const wFunc = autoWidth(
     [...circuits.map((c) => c.function_name), "FUNCTION"],
     18,
@@ -281,8 +299,42 @@ export async function exportPanelToExcel(
   // bukan jumlah karakter, jadi wrap-nya bisa sedikit lebih panjang dari hitungan
   ws.getRow(headBottom).height = Math.min(160, Math.max(30, (fixLines + 1) * 11 + 4));
 
+  const L = (col: number) => ws.getColumn(col).letter;
+
+  // ------------------------------------------------- baris pengali WATT/UNIT
+  // Jadi acuan formula demand load R/S/T di bawah, sekaligus bisa diubah user.
+  // Panel tanpa kolom fixture tidak perlu baris ini (tidak ada yang dikalikan).
+  let rWattUnit = 0;
+  if (nFix > 0) {
+    r += 1;
+    rWattUnit = r;
+    const row = ws.getRow(r);
+    row.getCell(1).value = "WATT / UNIT";
+    cols.forEach((col, i) => {
+      row.getCell(C_FIX0 + i).value = wattByCol[i];
+    });
+    for (let col = 1; col <= nCols; col++) {
+      const cell = row.getCell(col);
+      cell.border = THIN;
+      cell.font = { bold: true, size: 9 };
+      cell.fill = col >= C_FIX0 && col < C_R ? INPUT_FILL : SUM_FILL;
+      cell.alignment = {
+        vertical: "middle",
+        horizontal: col <= C_CABLE ? "right" : "center",
+      };
+      if (col >= C_FIX0 && col < C_R) cell.numFmt = "#,##0.#";
+    }
+    ws.mergeCells(r, 1, r, C_CABLE);
+    row.height = 14;
+  }
+
   // ---------------------------------------------------------------- isi
   const bodyTop = r + 1;
+  /** Total watt circuit = SUM(qty x watt/unit) sepanjang kolom fixture. */
+  const sumProduct = (row: number) =>
+    `SUMPRODUCT(${L(C_FIX0)}${row}:${L(C_R - 1)}${row},${L(C_FIX0)}$${rWattUnit}:${L(C_R - 1)}$${rWattUnit})`;
+
+  let fallbackRows = 0;
   for (const c of circuits) {
     r += 1;
     const row = ws.getRow(r);
@@ -293,9 +345,35 @@ export async function exportPanelToExcel(
     cols.forEach((col, i) => {
       row.getCell(C_FIX0 + i).value = qtyOf(c, col.key) || null;
     });
-    row.getCell(C_R).value = Number(c.phase_r) || null;
-    row.getCell(C_R + 1).value = Number(c.phase_s) || null;
-    row.getCell(C_R + 2).value = Number(c.phase_t) || null;
+
+    // Demand load per fase: pakai formula qty x watt/unit HANYA kalau hasilnya
+    // memang sama dengan angka dari Revit. Kalau beda (watt/unit tidak diketahui,
+    // load tidak berasal dari fixture, atau fase tidak seimbang), angka Revit
+    // ditulis apa adanya supaya schedule tidak jadi salah.
+    const phases = [Number(c.phase_r) || 0, Number(c.phase_s) || 0, Number(c.phase_t) || 0];
+    const revitTotal = phases[0] + phases[1] + phases[2];
+    const derived = cols.reduce(
+      (s, col, i) => s + qtyOf(c, col.key) * (wattByCol[i] ?? 0),
+      0
+    );
+    const energized = phases.filter((v) => v > 0).length;
+    const balanced3 =
+      energized === 3 &&
+      Math.abs(phases[0] - phases[1]) < 0.05 &&
+      Math.abs(phases[1] - phases[2]) < 0.05;
+    const matches =
+      revitTotal > 0 && Math.abs(derived - revitTotal) <= Math.max(0.5, revitTotal * 0.01);
+    const useFormula = nFix > 0 && matches && (energized === 1 || balanced3);
+    if (revitTotal > 0 && !useFormula) fallbackRows += 1;
+
+    phases.forEach((value, i) => {
+      row.getCell(C_R + i).value = !value
+        ? null
+        : useFormula
+          ? { formula: balanced3 ? `${sumProduct(r)}/3` : sumProduct(r), result: round1(value) }
+          : value;
+    });
+
     row.getCell(C_REMARKS).value = c.remarks ?? "";
 
     for (let col = 1; col <= nCols; col++) {
@@ -335,7 +413,6 @@ export async function exportPanelToExcel(
   // supaya kalau ada watt/qty yang diedit di Excel, total ikut terhitung ulang.
   // `result` diisi juga sebagai nilai cache, jadi angkanya sudah kelihatan
   // walau dibuka di aplikasi yang tidak menghitung ulang formula.
-  const L = (col: number) => ws.getColumn(col).letter;
   const hasRows = circuits.length > 0;
   const colRange = (col: number) => `${L(col)}${bodyTop}:${L(col)}${bodyBottom}`;
   /** Sel formula; kalau panel belum ada circuit, tulis angka biasa saja. */
@@ -433,14 +510,24 @@ export async function exportPanelToExcel(
   // di atas, jadi kalau ada yang diedit catatan ini tidak jadi basi.
   const cellRef = (col: number, row: number) => `${L(col)}${row}`;
   const notes = [
-    "Rumus perhitungan (angka di baris ringkasan adalah formula Excel, ikut berubah kalau data diedit):",
+    "Rumus perhitungan (angka di kolom DEMAND LOAD & baris ringkasan adalah formula Excel, ikut berubah kalau data diedit):",
+    ...(nFix > 0
+      ? [
+          `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(qty kolom FIXTURE x baris WATT / UNIT di baris ${rWattUnit}), dibagi 3 untuk circuit 3 fase seimbang`,
+          fallbackRows > 0
+            ? `Catatan: ${fallbackRows} circuit tetap memakai angka demand load dari Revit (bukan formula) karena hasil qty x watt/unit tidak sama dengan nilai Revit — mis. watt/unit tidak ada di data atau bebannya tidak berasal dari fixture.`
+            : "Semua circuit yang berbeban memakai formula qty x watt/unit.",
+        ]
+      : []),
     `SUB TOTAL R/S/T (${cellRef(C_R, rSub)}..${cellRef(C_R + 2, rSub)}) = SUM per kolom fase, baris ${bodyTop}-${bodyBottom}`,
     `TOTAL WATT (${cellRef(C_R, rWatt)}) = SUB TOTAL R + S + T`,
     `TOTAL VA (${cellRef(C_R, rVA)}) = TOTAL WATT / cos phi (sel ${cellRef(C_BRK, rPf)})`,
     `CONNECTED AMPERE (${cellRef(C_R, rAmp)}) = TOTAL VA / ${
       is3ph ? `(SQRT(3) x V L-L)` : "V L-N"
     } (sel ${cellRef(C_BRK, rVolt)})`,
-    `Sel berwarna kuning (${cellRef(C_BRK, rPf)}, ${cellRef(C_BRK, rVolt)}) boleh diubah — TOTAL VA & CONNECTED AMPERE ikut menyesuaikan.`,
+    `Sel berwarna kuning (cos phi ${cellRef(C_BRK, rPf)}, tegangan ${cellRef(C_BRK, rVolt)}${
+      nFix > 0 ? `, baris WATT / UNIT ${rWattUnit}` : ""
+    }) boleh diubah — angka di bawahnya ikut menyesuaikan.`,
   ];
   notes.forEach((text, i) => {
     r += 1;

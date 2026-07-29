@@ -64,10 +64,16 @@ npm run dev   # http://localhost:3000
   otomatis digeser ke nomor setelah circuit terakhir (isinya tetap).
   Pull from Website juga melewati baris manual (tidak ditulis ke Revit).
 - **Export Excel**: header bertingkat (FIXTURE / DEMAND LOAD), garis di semua sel,
-  lebar kolom mengikuti isi. Baris ringkasan ditulis sebagai **formula Excel
-  hidup** (`SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
-  `CONNECTED AMPERE = TOTAL VA / (√3 × V)`), dan `cos φ` + tegangan jadi
-  **sel input berwarna kuning** — diubah di Excel, total ikut terhitung ulang.
+  lebar kolom mengikuti isi, dan isinya **formula Excel hidup**:
+  - demand load R/S/T per circuit = `SUMPRODUCT(qty fixture × baris WATT / UNIT)`,
+    dibagi 3 untuk circuit 3 fase seimbang. Kalau hasil qty × watt tidak sama
+    dengan angka Revit (watt/unit tidak ada di data, beban bukan dari fixture,
+    atau fase tidak seimbang), angka Revit dipakai apa adanya supaya schedule
+    tidak jadi salah — jumlah baris seperti ini dicatat di bawah tabel.
+  - `SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
+    `CONNECTED AMPERE = TOTAL VA / (√3 × V)`
+  - **sel input berwarna kuning** (`cos φ`, tegangan, baris `WATT / UNIT`) —
+    diubah di Excel, semua angka di bawahnya ikut terhitung ulang
 - **Export CAD (DXF)**: satu file DXF R12 berisi SLD + tabel schedule lengkap,
   skala **1:1 dalam milimeter**, siap dibuka di AutoCAD / BricsCAD / DraftSight /
   LibreCAD atau di-import ke Revit. Simbol breaker jadi **block** (`BRK_MCB_1P`,
