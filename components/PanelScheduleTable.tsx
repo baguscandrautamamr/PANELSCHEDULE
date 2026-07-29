@@ -621,6 +621,18 @@ export default function PanelScheduleTable({
 
       <table className="sched-table w-full border-collapse text-xs">
         <thead>
+          {/* hanya saat cetak: <thead> diulang browser di tiap halaman, jadi
+              halaman lanjutan tetap kelihatan ini schedule panel yang mana */}
+          <tr className="hidden print:table-row">
+            <th
+              colSpan={9 + cols.length}
+              className="sched-page-title px-2 py-1 text-left text-[10px]"
+            >
+              {[projectName, panel.panel_code, panel.location && `LOCATION ${panel.location}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </th>
+          </tr>
           <tr className="bg-neutral-100">
             <th rowSpan={3} className="w-10 px-0 py-1 align-middle text-[9px] font-normal text-neutral-400">
               SLD
@@ -812,7 +824,11 @@ export default function PanelScheduleTable({
             );
           })}
         </tbody>
-        <tfoot className="font-semibold">
+        {/* Ringkasan sengaja TIDAK memakai <tfoot>: browser mengulang tfoot di
+            setiap halaman cetak, jadi TOTAL/SUB TOTAL ikut muncul di tengah
+            schedule. Sebagai <tbody> terakhir, ringkasan hanya tampil sekali
+            di akhir tabel. */}
+        <tbody className="sched-summary font-semibold">
           <tr className="bg-neutral-50">
             <td colSpan={5} className="px-2 py-1 text-right">
               TOTAL
@@ -861,10 +877,10 @@ export default function PanelScheduleTable({
             </td>
             <td className="px-2 py-1" />
           </tr>
-        </tfoot>
+        </tbody>
       </table>
 
-      <div className="mt-3 space-y-1 border-t border-neutral-200 pt-2 text-[11px] text-neutral-600">
+      <div className="print-keep mt-3 space-y-1 border-t border-neutral-200 pt-2 text-[11px] text-neutral-600">
         <p className="font-semibold text-neutral-700">Rumus perhitungan:</p>
         <p>
           TOTAL WATT = ΣR + ΣS + ΣT = {nf.format(subR)} + {nf.format(subS)} +{" "}

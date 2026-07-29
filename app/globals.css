@@ -10,6 +10,11 @@ body {
   border: 1px solid #444;
 }
 
+@page {
+  size: landscape;
+  margin: 8mm;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -20,8 +25,43 @@ body {
   .print-area {
     box-shadow: none !important;
     border: 1px solid #999 !important;
+    padding: 0 !important;
   }
   .sched-table {
-    font-size: 9px;
+    font-size: 8px;
+  }
+
+  /* arsiran header & baris ringkasan ikut tercetak, tidak dibuang printer */
+  .sched-table th,
+  .sched-table td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* header tabel diulang di tiap halaman, baris circuit tidak boleh terbelah */
+  .sched-table thead {
+    display: table-header-group;
+  }
+  .sched-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* ringkasan + rumus tetap satu blok utuh di halaman terakhir */
+  .sched-summary,
+  .print-keep {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .sched-page-title {
+    background: #e5e5e5;
+    font-weight: 700;
+  }
+
+  /* SLD tidak perlu selebar halaman — sisakan ruang, jangan bikin halaman 1
+     kosong melompong di sebelah kanannya */
+  .print-sld {
+    max-width: 105mm;
   }
 }

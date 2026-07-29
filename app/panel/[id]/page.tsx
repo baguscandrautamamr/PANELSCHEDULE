@@ -120,7 +120,7 @@ export default function PanelPage() {
 
       {panel && (
         <div className="print-area rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-          <div className="mb-4 max-w-3xl border-b border-neutral-200 pb-3">
+          <div className="print-sld mb-4 max-w-3xl border-b border-neutral-200 pb-3">
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-500">
               Single Line Diagram
             </h2>
