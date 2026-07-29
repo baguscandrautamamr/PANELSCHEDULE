@@ -36,12 +36,20 @@ Buka Revit → tab **Panel Schedule**:
 ## Cara kerja
 
 1. Collect semua Electrical Equipment yang punya assigned circuits (= panel).
-2. Per panel: baca supply circuit (source panel, main breaker, incoming cable)
-   dan semua circuit (nomor, load name, rating, poles, true load).
-3. Fixture per circuit di-group per **family + type** Revit (kolom dinamis di web).
-4. Balancing: 3P = load dibagi rata R/S/T; 1P/2P = satu fase
-   (aproksimasi dari nomor circuit — bisa disesuaikan).
-5. Push ke Supabase REST: upsert project + panel, replace circuits + fixtures.
+2. Per panel: baca supply circuit (source panel, main breaker, incoming cable,
+   fase/wire dari jumlah pole-nya) dan semua circuit (nomor, load name, rating,
+   poles, true load) — diurutkan per nomor circuit seperti panel schedule Revit.
+3. Nomor circuit dibaca apa adanya dari Revit, termasuk yang pakai prefix panel
+   (`(D)/7`, `DB-FG/7` — tergantung setting Circuit Naming) dan multi-pole
+   (`1,3,5` → nomor slot pertama = 1). Nomor di web = nomor di Revit, jadi
+   urutan barisnya ikut sama.
+4. Fixture per circuit di-group per **family + type** Revit (kolom dinamis di web).
+5. Fase R/S/T diambil dari beban per fase circuit itu di Revit (Apparent Load
+   Phase A/B/C) — sama dengan kolom A/B/C di panel schedule Revit. Kalau
+   parameternya tidak ada: 3P dibagi rata, 1P/2P aproksimasi dari nomor slot.
+6. Voltage (`220/380V`) dan cos φ (Σ True Load / Σ Apparent Load) diambil dari
+   model, bukan default `400V` / `0.8`, supaya TOTAL VA & AMPERE sama dengan Revit.
+7. Push ke Supabase REST: upsert project + panel, replace circuits + fixtures.
 
 ## Konfigurasi (opsional)
 
@@ -64,6 +72,5 @@ Tidak butuh Revit terinstall — referensi API pakai package NuGet
 ## TODO berikutnya
 
 - Baca breaker type RCBO/MCCB dari shared parameter (sekarang default `MCB {poles}P`)
-- Fase R/S/T presisi dari slot panel (sekarang aproksimasi nomor circuit)
 - IP rating / symbol tag / fuse dari parameter panel
 - Pilih panel tertentu saja sebelum push (sekarang push semua)
