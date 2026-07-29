@@ -81,8 +81,10 @@ export default function PanelPage() {
     };
   }, [id, load]);
 
+  // Lebar penuh layar (dibatasi hanya di monitor sangat lebar): tabel schedule
+  // + kolom fixture dinamis butuh ruang sebanyak mungkin.
   return (
-    <main className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+    <main className="mx-auto w-full max-w-[2400px] p-3 sm:p-4">
       <div className="no-print mb-4 flex items-center justify-between">
         <Link href="/" className="text-sm text-blue-700 hover:underline">
           ← Semua panel
@@ -118,7 +120,7 @@ export default function PanelPage() {
 
       {panel && (
         <div className="print-area rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-          <div className="mb-4 max-w-xl border-b border-neutral-200 pb-3">
+          <div className="mb-4 max-w-3xl border-b border-neutral-200 pb-3">
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-500">
               Single Line Diagram
             </h2>
