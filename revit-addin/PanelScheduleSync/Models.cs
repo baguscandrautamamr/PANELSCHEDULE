@@ -22,7 +22,16 @@ public class PanelData
 
 public class CircuitData
 {
+    /// <summary>Nomor urut tampilan di schedule (1..N, rapat tanpa loncatan).</summary>
     public int CircuitNo { get; set; }
+
+    /// <summary>
+    /// "Circuit Number" Revit apa adanya, termasuk prefix panel — "(D)/4",
+    /// "DB-FG/42", "1,3,5". Jadi kunci pencocokan waktu Pull, dan ikut dipakai
+    /// di FUNCTION ("LIGHTING (D)/4").
+    /// </summary>
+    public string? RevitCircuitNumber { get; set; }
+
     public string FunctionName { get; set; } = "";
     public string? BreakerType { get; set; }
     public string? BreakerRating { get; set; }
@@ -33,6 +42,18 @@ public class CircuitData
     public string? Remarks { get; set; }
     public bool IsSpare { get; set; }
     public List<FixtureData> Fixtures { get; set; } = [];
+}
+
+/// <summary>
+/// Baris tombstone: circuit Revit yang dihapus lewat website dan menunggu
+/// di-disconnect saat Pull. RevitCircuitNumber bisa null untuk baris lama
+/// (dibuat sebelum kolomnya ada) — pencocokannya jatuh ke No.
+/// </summary>
+public class DeletedCircuit(string id, int no, string? revitCircuitNumber)
+{
+    public string Id { get; } = id;
+    public int No { get; } = no;
+    public string? RevitCircuitNumber { get; } = revitCircuitNumber;
 }
 
 public class FixtureData

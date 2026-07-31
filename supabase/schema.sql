@@ -36,8 +36,10 @@ create table if not exists panels (
 create table if not exists circuits (
   id uuid primary key default gen_random_uuid(),
   panel_id uuid references panels(id) on delete cascade,
-  circuit_no int not null,
-  function_name text not null,       -- "LIGHTING (L4-1)"
+  circuit_no int not null,           -- nomor urut tampilan 1..N (rapat, tidak loncat)
+  revit_circuit_number text,         -- "Circuit Number" Revit apa adanya: "(D)/4", "DB-FG/42", "1,3,5"
+                                     -- dipakai Pull buat mencocokkan baris ini dengan circuit di model
+  function_name text not null,       -- "LIGHTING (D)/4"
   breaker_type text,                 -- MCB 1P / MCB 3P / MCCB 3P / RCBO 2P / RCBO 4P
   breaker_rating text,               -- "10A"
   outgoing_cable text,               -- "NYM 3C x 2.5mm2"
@@ -54,6 +56,7 @@ create table if not exists circuits (
 -- migrasi untuk database yang sudah ada (create table if not exists di atas
 -- tidak menambah kolom ke tabel lama) — aman dijalankan ulang
 alter table circuits add column if not exists source text not null default 'revit';
+alter table circuits add column if not exists revit_circuit_number text;
 
 create table if not exists circuit_fixtures (
   id uuid primary key default gen_random_uuid(),

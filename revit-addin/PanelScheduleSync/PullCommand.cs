@@ -24,6 +24,11 @@ public partial class PullCommand : IExternalCommand
         int updated = 0, skippedCable = 0, skippedFunction = 0;
         int disconnected = 0, failedDisconnect = 0;
 
+        // Baris tombstone yang sudah beres di model — baru dibersihkan dari
+        // database SETELAH transaksi Revit commit, supaya kalau commit gagal
+        // niat hapusnya tidak ikut hilang dan bisa dicoba lagi di Pull berikutnya.
+        var tombstonesToClear = new List<string>();
+
         try
         {
             var equipments = new FilteredElementCollector(doc)
@@ -54,15 +59,11 @@ public partial class PullCommand : IExternalCommand
                     continue;
                 }
 
-                var byNo = rows
-                    .GroupBy(r => r.CircuitNo)
-                    .ToDictionary(g => g.Key, g => g.First());
-
                 int panelUpdated = 0;
                 foreach (ElectricalSystem cs in assigned)
                 {
-                    int no = ParseFirstNumber(cs.CircuitNumber);
-                    if (no <= 0 || !byNo.TryGetValue(no, out CircuitData? row)) continue;
+                    CircuitData? row = MatchRow(rows, cs);
+                    if (row is null) continue;
 
                     bool changed = false;
 
@@ -108,13 +109,12 @@ public partial class PullCommand : IExternalCommand
                 // circuit yang dihapus lewat website (tombstone circuit_no
                 // negatif): disconnect dari panel, lalu bersihkan barisnya
                 int panelDisconnected = 0;
-                List<(string Id, int No)> deletedRows =
+                List<DeletedCircuit> deletedRows =
                     Task.Run(() => client.GetDeletedCircuitsByPanelCodeAsync(panelCode))
                         .GetAwaiter().GetResult();
-                foreach ((string rowId, int no) in deletedRows)
+                foreach (DeletedCircuit del in deletedRows)
                 {
-                    ElectricalSystem? cs = assigned
-                        .FirstOrDefault(s => ParseFirstNumber(s.CircuitNumber) == no);
+                    ElectricalSystem? cs = MatchSystem(assigned, del.RevitCircuitNumber, del.No);
                     if (cs is not null)
                     {
                         try
@@ -132,8 +132,8 @@ public partial class PullCommand : IExternalCommand
                         }
                     }
                     // circuit tidak ada di model (atau sudah ter-disconnect):
-                    // baris tombstone tinggal dibersihkan
-                    Task.Run(() => client.DeleteCircuitAsync(rowId)).GetAwaiter().GetResult();
+                    // baris tombstone tinggal dibersihkan setelah commit
+                    tombstonesToClear.Add(del.Id);
                 }
 
                 report.AppendLine(
@@ -142,6 +142,21 @@ public partial class PullCommand : IExternalCommand
             }
 
             tx.Commit();
+
+            // Model sudah tersimpan — baru sekarang tombstone-nya dibuang dari
+            // database. Kalau salah satu gagal, barisnya tetap ada dan Pull
+            // berikutnya tinggal mengulang (disconnect-nya idempoten).
+            foreach (string rowId in tombstonesToClear)
+            {
+                try
+                {
+                    Task.Run(() => client.DeleteCircuitAsync(rowId)).GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    // dibiarkan buat Pull berikutnya
+                }
+            }
 
             TaskDialog.Show("Panel Schedule Sync — Pull",
                 $"Selesai. {updated} circuit diupdate.\n"
@@ -187,10 +202,45 @@ public partial class PullCommand : IExternalCommand
         return false;
     }
 
-    private static int ParseFirstNumber(string? s)
+    /// <summary>
+    /// Cari baris website yang mewakili circuit ini. Kunci utamanya
+    /// "Circuit Number" Revit apa adanya ("(D)/4", "DB-FG/42", "1,3,5") —
+    /// dicocokkan sebagai teks, jadi prefix panel apa pun tetap kena.
+    /// </summary>
+    private static CircuitData? MatchRow(List<CircuitData> rows, ElectricalSystem cs)
+    {
+        string number = (cs.CircuitNumber ?? "").Trim();
+        if (number.Length == 0) return null;
+
+        return rows.FirstOrDefault(
+            r => string.Equals(r.RevitCircuitNumber?.Trim(), number, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Kebalikan <see cref="MatchRow"/>: cari circuit di model untuk satu baris
+    /// website. Baris lama (dibuat sebelum kolom revit_circuit_number ada) tidak
+    /// punya nomor asli — untuk itu saja dipakai fallback nomor urut lama.
+    /// </summary>
+    private static ElectricalSystem? MatchSystem(
+        ISet<ElectricalSystem> systems, string? revitCircuitNumber, int legacyNo)
+    {
+        string number = (revitCircuitNumber ?? "").Trim();
+        if (number.Length > 0)
+        {
+            return systems.FirstOrDefault(
+                s => string.Equals((s.CircuitNumber ?? "").Trim(), number, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return legacyNo > 0
+            ? systems.FirstOrDefault(s => ParseLeadingNumber(s.CircuitNumber) == legacyNo)
+            : null;
+    }
+
+    /// <summary>Angka di awal string ("42/A" -> 42); 0 kalau tidak diawali angka.</summary>
+    private static int ParseLeadingNumber(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return 0;
-        string digits = new(s.Trim().TakeWhile(char.IsDigit).ToArray());
+        string digits = new(s!.Trim().TakeWhile(char.IsDigit).ToArray());
         return int.TryParse(digits, out int n) ? n : 0;
     }
 

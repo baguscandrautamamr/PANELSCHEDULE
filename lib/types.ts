@@ -28,8 +28,16 @@ export interface Panel {
 export interface Circuit {
   id: string;
   panel_id: string;
-  /** negatif = circuit Revit yang dihapus di web, menunggu disconnect via Pull */
+  /**
+   * Nomor urut tampilan (1..N, rapat tanpa loncatan).
+   * Negatif = circuit Revit yang dihapus di web, menunggu disconnect via Pull.
+   */
   circuit_no: number;
+  /**
+   * "Circuit Number" Revit apa adanya — "(D)/4", "DB-FG/42", "1,3,5".
+   * Null untuk load manual. Jadi kunci pencocokan waktu Pull.
+   */
+  revit_circuit_number: string | null;
   function_name: string;
   breaker_type: string | null;
   breaker_rating: string | null;
