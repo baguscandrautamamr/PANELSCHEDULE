@@ -86,7 +86,13 @@ public class PanelExtractor(Document doc)
                 panel.Circuits.Add(ExtractCircuit(cs, powerFactor));
             }
 
-            RenumberDuplicates(panel.Circuits);
+            // Kolom NO. di schedule = nomor urut rapat 1..N, bukan nomor slot
+            // Revit. Nomor slot sering loncat (…42, 43, 46, 47, 50, 53…) karena
+            // circuit multi-pole memakan beberapa slot sekaligus dan ada slot
+            // kosong. Nomor Revit yang asli tetap terbawa di RevitCircuitNumber
+            // dan ikut tampil di FUNCTION ("LIGHTING (D)/4").
+            for (int i = 0; i < panel.Circuits.Count; i++)
+                panel.Circuits[i].CircuitNo = i + 1;
 
             if (panel.Circuits.Count > 0)
                 result.Add(panel);
@@ -136,24 +142,6 @@ public class PanelExtractor(Document doc)
         return i > start && int.TryParse(s.Substring(start, i - start), out int n) ? n : 0;
     }
 
-    /// <summary>
-    /// circuit_no wajib unik per panel (constraint di database).
-    /// Nomor 0 / duplikat diganti nomor kosong berikutnya.
-    /// </summary>
-    private static void RenumberDuplicates(List<CircuitData> circuits)
-    {
-        var used = new HashSet<int>();
-        int next = 1;
-        foreach (CircuitData c in circuits)
-        {
-            if (c.CircuitNo > 0 && used.Add(c.CircuitNo))
-                continue;
-            while (used.Contains(next)) next++;
-            c.CircuitNo = next;
-            used.Add(next);
-        }
-    }
-
     private CircuitData ExtractCircuit(ElectricalSystem cs, double powerFactor)
     {
         // Space (slot dicadangkan, belum ada load) diperlakukan seperti spare:
@@ -171,7 +159,10 @@ public class PanelExtractor(Document doc)
 
         var circuit = new CircuitData
         {
-            CircuitNo = circuitNo,
+            // CircuitNo (nomor urut tampilan) diisi belakangan di ExtractAll
+            RevitCircuitNumber = string.IsNullOrWhiteSpace(cs.CircuitNumber)
+                ? null
+                : cs.CircuitNumber.Trim(),
             // TODO: kalau ada shared parameter "Breaker Type" (RCBO/MCCB), itu yang dipakai
             BreakerType = cs.LookupParameter("Breaker Type")?.AsString()
                           ?? $"MCB {poles}P",
@@ -183,11 +174,11 @@ public class PanelExtractor(Document doc)
         if (!isEmpty)
             circuit.Fixtures = ExtractFixtures(cs);
 
-        // FUNCTION sync dengan family Revit: nama diambil dari family
-        // fixture yang terhubung di circuit (bukan load classification).
+        // FUNCTION = jenis fixture yang terhubung + nomor circuit Revit apa
+        // adanya, mis. "LIGHTING (D)/4" atau "RECEPTACLE (D)/42".
         circuit.FunctionName = isSpare ? "SPARE"
             : isSpace ? "SPACE"
-            : BuildFunctionName(circuit.Fixtures) ?? cs.LoadName;
+            : BuildFunctionName(cs, circuit.RevitCircuitNumber) ?? cs.LoadName;
 
         if (!isEmpty && watt > 0)
         {
@@ -295,18 +286,66 @@ public class PanelExtractor(Document doc)
     }
 
     /// <summary>
-    /// Nama function dari family Revit yang terhubung di circuit —
-    /// distinct family name, digabung " + " kalau campuran.
+    /// Jenis beban menurut kategori Revit family yang terhubung. Semua family
+    /// di kategori Lighting Fixtures jadi "LIGHTING", semua yang di Electrical
+    /// Fixtures jadi "RECEPTACLE" — nama family-nya sendiri (mis.
+    /// "ACT_E_HIGHBAY_BY698P", "ACT_E_RECEPTACLE INDUSTRIAL") tidak dipakai di
+    /// FUNCTION, tapi tetap jadi kolom FIXTURE tersendiri di tabel schedule.
     /// </summary>
-    private static string? BuildFunctionName(List<FixtureData> fixtures)
+    /// Dikunci pakai ElementId (bukan Category.BuiltInCategory) supaya sama-sama
+    /// valid di API Revit 2023 dan 2025.
+    private static readonly Dictionary<ElementId, string> LoadKindByCategory = new()
     {
-        if (fixtures.Count == 0) return null;
-        var families = fixtures
-            .Select(f => f.FixtureType)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct()
-            .ToList();
-        return families.Count == 0 ? null : string.Join(" + ", families);
+        [new ElementId(BuiltInCategory.OST_LightingFixtures)] = "LIGHTING",
+        [new ElementId(BuiltInCategory.OST_LightingDevices)] = "LIGHTING",
+        [new ElementId(BuiltInCategory.OST_ElectricalFixtures)] = "RECEPTACLE",
+        [new ElementId(BuiltInCategory.OST_ElectricalEquipment)] = "EQUIPMENT",
+        [new ElementId(BuiltInCategory.OST_MechanicalEquipment)] = "MECHANICAL",
+        [new ElementId(BuiltInCategory.OST_PlumbingFixtures)] = "PLUMBING",
+        [new ElementId(BuiltInCategory.OST_DataDevices)] = "DATA",
+        [new ElementId(BuiltInCategory.OST_CommunicationDevices)] = "COMMUNICATION",
+        [new ElementId(BuiltInCategory.OST_FireAlarmDevices)] = "FIRE ALARM",
+        [new ElementId(BuiltInCategory.OST_SecurityDevices)] = "SECURITY",
+        [new ElementId(BuiltInCategory.OST_TelephoneDevices)] = "TELEPHONE",
+        [new ElementId(BuiltInCategory.OST_NurseCallDevices)] = "NURSE CALL",
+        [new ElementId(BuiltInCategory.OST_SpecialityEquipment)] = "SPECIALITY EQUIPMENT",
+    };
+
+    /// <summary>
+    /// Jenis beban satu element. Kategori di luar daftar dipakai nama
+    /// kategorinya; null kalau element tidak punya kategori sama sekali.
+    /// </summary>
+    private static string? LoadKindOf(Element el)
+    {
+        Category? cat = el.Category;
+        if (cat is null) return null;
+
+        if (LoadKindByCategory.TryGetValue(cat.Id, out string? kind)) return kind;
+
+        return string.IsNullOrWhiteSpace(cat.Name) ? null : cat.Name.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// FUNCTION = jenis fixture + nomor circuit Revit apa adanya, mengikuti
+    /// format panel schedule yang dipakai di gambar: "LIGHTING (D)/4",
+    /// "RECEPTACLE (D)/42". Circuit yang isinya campuran digabung " + "
+    /// ("LIGHTING + RECEPTACLE (D)/7"). Null kalau tidak ada yang bisa dipakai
+    /// (pemanggil jatuh ke Load Name bawaan Revit).
+    /// </summary>
+    private static string? BuildFunctionName(ElectricalSystem cs, string? circuitNumber)
+    {
+        var kinds = new List<string>();
+        foreach (Element el in cs.Elements)
+        {
+            string? kind = LoadKindOf(el);
+            if (kind is not null && !kinds.Contains(kind)) kinds.Add(kind);
+        }
+
+        string label = string.Join(" + ", kinds);
+        if (label.Length == 0)
+            return string.IsNullOrWhiteSpace(circuitNumber) ? null : circuitNumber;
+
+        return string.IsNullOrWhiteSpace(circuitNumber) ? label : $"{label} {circuitNumber}";
     }
 
     /// <summary>Group element di circuit per family + type (= type family Revit).</summary>

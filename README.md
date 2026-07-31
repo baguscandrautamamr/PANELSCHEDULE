@@ -25,8 +25,10 @@ Revit (grouped circuits) -> C# add-in "Push to Website" (manual)
 Buka [SQL Editor](https://supabase.com/dashboard/project/ptkhwoabeclqbfemxgnj/sql/new), lalu jalankan:
 
 1. `supabase/schema.sql` — bikin tabel + RLS + realtime publication
-   (aman dijalankan ulang; kalau database sudah ada, jalankan ulang sekali
-   untuk menambah kolom `circuits.source` — wajib buat add-in versi terbaru)
+   (aman dijalankan ulang; kalau database sudah ada, **jalankan ulang sekali**
+   untuk menambah kolom `circuits.source` dan `circuits.revit_circuit_number` —
+   wajib buat add-in versi terbaru, kalau belum maka Push/Pull error
+   "column circuits.revit_circuit_number does not exist")
 2. `supabase/seed.sql` — data contoh panel **P-011.4 LDB PRODUCTION 1st** (opsional tapi disarankan, biar website langsung ada isinya)
 
 ### 2. Vercel
@@ -48,8 +50,17 @@ npm run dev   # http://localhost:3000
 - List project & panel (realtime)
 - Halaman panel: **tabel schedule** dengan
   - kolom fixture **dinamis** dari data (tidak di-hardcode, beda tiap project)
-  - nomor & urutan baris sama dengan panel schedule Revit (nomor circuit Revit
-    dipakai apa adanya, termasuk yang berprefix seperti `(D)/7`)
+  - kolom **NO.** = nomor urut rapat `1..N`. Nomor slot Revit sering loncat
+    (…42, 43, 46, 47, 50, 53…) karena circuit multi-pole memakan beberapa slot
+    dan ada slot kosong — di schedule cetak yang dipakai nomor urut. Urutannya
+    tetap mengikuti panel schedule Revit. Nomor Revit yang asli tersimpan utuh
+    (hover kolom NO. untuk melihatnya) dan ikut tampil di FUNCTION.
+  - kolom **FUNCTION** = jenis fixture + Circuit Number Revit apa adanya, mis.
+    `LIGHTING (D)/4`, `RECEPTACLE (D)/42`. Jenisnya dari kategori Revit family
+    yang tersambung — Lighting Fixtures → `LIGHTING`, Electrical Fixtures →
+    `RECEPTACLE`, dst; nama family-nya sendiri (`ACT_E_HIGHBAY_BY698P`,
+    `ACT_E_RECEPTACLE INDUSTRIAL`) tidak ikut di FUNCTION tapi tetap jadi kolom
+    FIXTURE tersendiri. Circuit campuran digabung: `LIGHTING + RECEPTACLE (D)/7`.
   - demand load per fase **R/S/T** mengikuti fase asli circuit di Revit
     (kolom A/B/C panel schedule Revit)
   - summary: total qty per fixture, SUB TOTAL R/S/T, TOTAL WATT,
@@ -91,7 +102,13 @@ npm run dev   # http://localhost:3000
   dan nomor manual lain naik mengisi celah; circuit Revit ditandai hapus
   (tombstone `circuit_no` negatif) lalu di-**disconnect dari panel** saat
   Pull from Website dijalankan di Revit — Push sebelum Pull membatalkan
-  hapusnya (circuit muncul lagi dari model).
+  hapusnya (circuit muncul lagi dari model). Baris tombstone baru dibersihkan
+  dari database setelah transaksi Revit commit, jadi kalau commit gagal niat
+  hapusnya tidak hilang.
+- **Pull mencocokkan circuit lewat Circuit Number Revit apa adanya** (kolom
+  `circuits.revit_circuit_number`), dibandingkan sebagai teks. Prefix panel apa
+  pun dari setting Circuit Naming (`(D)/7`, `DB-FG/42`, `L1-7`) ikut kena tanpa
+  perlu di-parse.
 
 ## Roadmap
 

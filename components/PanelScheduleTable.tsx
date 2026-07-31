@@ -147,6 +147,9 @@ export default function PanelScheduleTable({
 
   /// Tukar circuit_no dua circuit lewat nilai sementara supaya tidak
   /// menabrak unique constraint (panel_id, circuit_no) saat swap.
+  /// Nomor sementara harus POSITIF: nomor negatif adalah penanda tombstone
+  /// "dihapus di web", jadi kalau dipakai di sini, Pull yang kebetulan jalan
+  /// bersamaan akan menganggap baris ini dihapus lalu membuangnya.
   async function moveCircuit(index: number, direction: -1 | 1) {
     const other = index + direction;
     if (other < 0 || other >= circuits.length) return;
@@ -154,7 +157,7 @@ export default function PanelScheduleTable({
     const b = circuits[other];
     const aOrig = a.circuit_no;
     const bOrig = b.circuit_no;
-    const temp = -Math.abs(aOrig) - 100000;
+    const temp = Math.abs(aOrig) + 100000;
 
     const { error: e1 } = await supabase
       .from("circuits")
@@ -721,7 +724,15 @@ export default function PanelScheduleTable({
                         </button>
                       </div>
                     )}
-                    <span>{c.circuit_no}</span>
+                    <span
+                      title={
+                        c.revit_circuit_number
+                          ? `Circuit Number di Revit: ${c.revit_circuit_number}`
+                          : undefined
+                      }
+                    >
+                      {c.circuit_no}
+                    </span>
                     {c.source === "manual" && (
                       <span
                         title="Load manual dari website — tidak ditimpa/dihapus saat Push dari Revit; nomornya bisa bergeser ke bawah kalau bentrok dengan circuit Revit baru"

@@ -81,7 +81,7 @@ public class SupabaseClient
         // hapus, ditangani GetDeletedCircuitsByPanelCodeAsync).
         JsonDocument rows = await SendAsync(
             HttpMethod.Get,
-            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=gt.0&select=circuit_no,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
+            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=gt.0&select=circuit_no,revit_circuit_number,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
 
         var list = new List<CircuitData>();
         foreach (JsonElement row in rows.RootElement.EnumerateArray())
@@ -89,6 +89,7 @@ public class SupabaseClient
             list.Add(new CircuitData
             {
                 CircuitNo = row.GetProperty("circuit_no").GetInt32(),
+                RevitCircuitNumber = row.GetProperty("revit_circuit_number").GetString(),
                 FunctionName = row.GetProperty("function_name").GetString() ?? "",
                 BreakerType = row.GetProperty("breaker_type").GetString(),
                 BreakerRating = row.GetProperty("breaker_rating").GetString(),
@@ -100,10 +101,10 @@ public class SupabaseClient
 
     /// <summary>
     /// Circuit Revit yang dihapus lewat website (tombstone: circuit_no
-    /// negatif). Return (id baris, nomor circuit asli) — dipakai Pull untuk
-    /// disconnect circuit dari panel lalu membersihkan barisnya.
+    /// negatif) — dipakai Pull untuk disconnect circuit dari panel lalu
+    /// membersihkan barisnya.
     /// </summary>
-    public async Task<List<(string Id, int No)>> GetDeletedCircuitsByPanelCodeAsync(string panelCode)
+    public async Task<List<DeletedCircuit>> GetDeletedCircuitsByPanelCodeAsync(string panelCode)
     {
         JsonDocument panels = await SendAsync(
             HttpMethod.Get,
@@ -113,11 +114,16 @@ public class SupabaseClient
         string panelId = panels.RootElement[0].GetProperty("id").GetString()!;
         JsonDocument rows = await SendAsync(
             HttpMethod.Get,
-            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=lt.0&select=id,circuit_no");
+            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=lt.0&select=id,circuit_no,revit_circuit_number");
 
-        var list = new List<(string, int)>();
+        var list = new List<DeletedCircuit>();
         foreach (JsonElement row in rows.RootElement.EnumerateArray())
-            list.Add((row.GetProperty("id").GetString()!, -row.GetProperty("circuit_no").GetInt32()));
+        {
+            list.Add(new DeletedCircuit(
+                row.GetProperty("id").GetString()!,
+                -row.GetProperty("circuit_no").GetInt32(),
+                row.GetProperty("revit_circuit_number").GetString()));
+        }
         return list;
     }
 
@@ -153,6 +159,7 @@ public class SupabaseClient
                 {
                     ["panel_id"] = panelId,
                     ["circuit_no"] = c.CircuitNo,
+                    ["revit_circuit_number"] = c.RevitCircuitNumber,
                     ["function_name"] = c.FunctionName,
                     ["breaker_type"] = c.BreakerType,
                     ["breaker_rating"] = c.BreakerRating,
