@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useI18n } from "@/lib/i18n";
 import type { Circuit, Panel } from "@/lib/types";
 import PanelScheduleTable from "@/components/PanelScheduleTable";
 import PanelSLD from "@/components/PanelSLD";
 
 export default function PanelPage() {
+  const { t } = useI18n();
   const { id } = useParams<{ id: string }>();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export default function PanelPage() {
     <main className="mx-auto w-full max-w-[2400px] p-3 sm:p-4">
       <div className="no-print mb-4 flex items-center justify-between">
         <Link href="/" className="text-sm text-blue-700 hover:underline">
-          ← Semua panel
+          ← {t("Semua panel", "All panels")}
         </Link>
         <div className="flex items-center gap-3">
           <span
@@ -100,7 +102,9 @@ export default function PanelPage() {
                 live ? "bg-green-500" : "bg-neutral-300"
               }`}
             />
-            {live ? "Realtime aktif" : "Menghubungkan…"}
+            {live
+              ? t("Realtime aktif", "Realtime active")
+              : t("Menghubungkan…", "Connecting…")}
           </span>
           <button
             onClick={() => window.print()}
@@ -111,7 +115,9 @@ export default function PanelPage() {
         </div>
       </div>
 
-      {loading && <p className="text-neutral-500">Memuat panel…</p>}
+      {loading && (
+        <p className="text-neutral-500">{t("Memuat panel…", "Loading panel…")}</p>
+      )}
       {error && (
         <div className="rounded border border-red-300 bg-red-50 p-4 text-sm text-red-800">
           {error}

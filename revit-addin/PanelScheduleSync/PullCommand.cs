@@ -38,7 +38,8 @@ public partial class PullCommand : IExternalCommand
                 .Cast<FamilyInstance>()
                 .ToList();
 
-            using var tx = new Transaction(doc, "Pull Panel Schedule dari Website");
+            using var tx = new Transaction(doc, L.T(
+                "Pull Panel Schedule dari Website", "Pull Panel Schedule from Website"));
             tx.Start();
 
             foreach (FamilyInstance eq in equipments)
@@ -55,7 +56,9 @@ public partial class PullCommand : IExternalCommand
                     .GetAwaiter().GetResult();
                 if (rows is null)
                 {
-                    report.AppendLine($"{panelCode}: tidak ada di website — dilewati");
+                    report.AppendLine(L.T(
+                        $"{panelCode}: tidak ada di website — dilewati",
+                        $"{panelCode}: not on the website — skipped"));
                     continue;
                 }
 
@@ -137,8 +140,12 @@ public partial class PullCommand : IExternalCommand
                 }
 
                 report.AppendLine(
-                    $"{panelCode}: {panelUpdated} circuit diupdate"
-                    + (panelDisconnected > 0 ? $", {panelDisconnected} di-disconnect" : ""));
+                    L.T($"{panelCode}: {panelUpdated} circuit diupdate",
+                        $"{panelCode}: {panelUpdated} circuits updated")
+                    + (panelDisconnected > 0
+                        ? L.T($", {panelDisconnected} di-disconnect",
+                              $", {panelDisconnected} disconnected")
+                        : ""));
             }
 
             tx.Commit();
@@ -158,22 +165,31 @@ public partial class PullCommand : IExternalCommand
                 }
             }
 
-            TaskDialog.Show("Panel Schedule Sync — Pull",
-                $"Selesai. {updated} circuit diupdate.\n"
-                + $"{disconnected} circuit di-disconnect dari panel (dihapus lewat website).\n"
-                + (failedDisconnect > 0
-                    ? $"{failedDisconnect} circuit GAGAL di-disconnect — coba Pull lagi.\n"
-                    : "")
-                + $"{skippedCable} nilai kabel dilewati (param 'Wire Size' read-only).\n"
-                + $"{skippedFunction} nilai function dilewati (param 'Load Name'/'Circuit Description' "
-                + "tidak ada atau read-only).\n\n"
-                + report);
+            TaskDialog.Show($"{L.DialogTitle} — Pull",
+                L.T(
+                    $"Selesai. {updated} circuit diupdate.\n"
+                    + $"{disconnected} circuit di-disconnect dari panel (dihapus lewat website).\n"
+                    + (failedDisconnect > 0
+                        ? $"{failedDisconnect} circuit GAGAL di-disconnect — coba Pull lagi.\n"
+                        : "")
+                    + $"{skippedCable} nilai kabel dilewati (param 'Wire Size' read-only).\n"
+                    + $"{skippedFunction} nilai function dilewati (param 'Load Name'/'Circuit Description' "
+                    + "tidak ada atau read-only).",
+                    $"Done. {updated} circuits updated.\n"
+                    + $"{disconnected} circuits disconnected from their panel (deleted on the website).\n"
+                    + (failedDisconnect > 0
+                        ? $"{failedDisconnect} circuits FAILED to disconnect — run Pull again.\n"
+                        : "")
+                    + $"{skippedCable} cable values skipped ('Wire Size' parameter is read-only).\n"
+                    + $"{skippedFunction} function values skipped ('Load Name'/'Circuit Description' "
+                    + "parameter missing or read-only).")
+                + $"\n\n{report}");
             return Result.Succeeded;
         }
         catch (Exception ex)
         {
             message = ex.Message;
-            TaskDialog.Show("Panel Schedule Sync — Error", ex.ToString());
+            TaskDialog.Show($"{L.DialogTitle} — Error", ex.ToString());
             return Result.Failed;
         }
     }

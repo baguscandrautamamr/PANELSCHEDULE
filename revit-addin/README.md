@@ -2,6 +2,8 @@
 
 Tombol **"Push to Website"** di ribbon tab **Panel Schedule**: extract data panel +
 circuit dari model, lalu push ke Supabase → langsung muncul realtime di website.
+UI add-in dua bahasa (Indonesia / English), bisa diganti lewat tombol
+**Language** di ribbon.
 
 ## Download build
 
@@ -25,13 +27,23 @@ Extract artifact, lalu copy ke folder addins sesuai versi Revit
     └── (DLL lain dari artifact — khusus build 2023)
 ```
 
-Buka Revit → tab **Panel Schedule**:
+Buka Revit → tab **Panel Schedule** (tiap tombol punya icon sendiri: panel +
+panah keluar / masuk, dan globe untuk bahasa):
 
 - **Push to Website** — extract & kirim data panel ke Supabase (pilih project
   tujuan di dialog; FUNCTION diisi dari family Revit yang terhubung di circuit).
 - **Pull from Website** — tarik perubahan breaker & kabel yang diedit di
   website kembali ke model (rating circuit, param "Breaker Type" / "Wire Size"
   kalau ada dan tidak read-only).
+- **Language / Bahasa** — ganti bahasa add-in **Indonesia ⇄ English**. Label
+  tombol, tooltip, dialog, dan laporan hasil Push/Pull ikut berubah saat itu
+  juga. Pilihan disimpan di `%AppData%\PanelScheduleSync\language.txt`, jadi
+  tetap sama saat Revit dibuka lagi. Kalau belum pernah dipilih, add-in ikut
+  bahasa Revit-nya (Revit English → English, selainnya Indonesia).
+
+Icon ribbon digambar sebagai vektor di `RibbonIcons.cs` lalu dirender ke 32px
+(tombol besar) dan 16px (tombol kecil) — tidak ada file PNG yang perlu ikut
+di-copy saat install.
 
 ## Cara kerja
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n";
 import type { Panel } from "@/lib/types";
 
 /**
@@ -10,6 +11,7 @@ import type { Panel } from "@/lib/types";
  * yang sama), tidak bisa meleset walau ada baris yang wrap 2 baris teks.
  */
 export default function PanelSLD({ panel }: { panel: Panel }) {
+  const { t } = useI18n();
   const width = 640;
   const height = 112;
   const lampColors: [string, string][] = [
@@ -93,7 +95,7 @@ export default function PanelSLD({ panel }: { panel: Panel }) {
       {/* stub bus turun ke tabel di bawahnya */}
       <line x1={190} y1={64} x2={190} y2={height} stroke="currentColor" strokeWidth={2.5} />
       <text x={198} y={height - 4} fontSize={8} fill="currentColor" className="opacity-70">
-        ke breaker (tabel di bawah) ▼
+        {t("ke breaker (tabel di bawah) ▼", "to breakers (table below) ▼")}
       </text>
     </svg>
   );

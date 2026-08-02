@@ -2,6 +2,7 @@ import { DxfBuilder, type Pt } from "./dxf";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import { is3Phase, panelVoltage } from "./panelCalc";
+import { makeT, type Lang } from "./i18n";
 
 interface FixtureCol {
   key: string;
@@ -164,8 +165,10 @@ export function exportPanelToDxf(
   panel: Panel,
   circuits: Circuit[],
   cols: FixtureCol[],
-  projectName: string | null
+  projectName: string | null,
+  lang: Lang = "id"
 ) {
+  const t = makeT(lang);
   const dxf = new DxfBuilder();
   dxf.addLayer(L.frame, 8);
   dxf.addLayer(L.title, 5);
@@ -382,13 +385,16 @@ export function exportPanelToDxf(
   // ---- catatan rumus
   dxf.layer(L.text);
   const notes = [
-    "RUMUS PERHITUNGAN:",
+    t("RUMUS PERHITUNGAN:", "CALCULATION FORMULAS:"),
     `TOTAL WATT = SIGMA(R) + SIGMA(S) + SIGMA(T) = ${round1(subR)} + ${round1(subS)} + ${round1(subT)} = ${round1(totalWatt)} W`,
     `TOTAL VA = TOTAL WATT / cos phi = ${round1(totalWatt)} / ${pf} = ${round1(totalVA)} VA`,
     `CONNECTED AMPERE = TOTAL VA / ${is3ph ? "(sqrt3 x V)" : "V"} = ${round1(totalVA)} / ${
       is3ph ? `(1.732 x ${volt})` : volt
     } = ${round1(ampere)} A`,
-    "Satuan gambar: milimeter, skala 1:1. Simbol breaker = block BRK_*.",
+    t(
+      "Satuan gambar: milimeter, skala 1:1. Simbol breaker = block BRK_*.",
+      "Drawing units: millimeters, 1:1 scale. Breaker symbols = block BRK_*."
+    ),
   ];
   notes.forEach((line, i) => {
     dxf.text(line, [0, tableBottom - 6 - i * 4.5], { height: 2.2 });

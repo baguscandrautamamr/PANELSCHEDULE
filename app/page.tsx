@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { Rich, useI18n } from "@/lib/i18n";
 import type { Panel, Project } from "@/lib/types";
 
 export default function Home() {
+  const { t } = useI18n();
   const [projects, setProjects] = useState<Project[]>([]);
   const [panels, setPanels] = useState<Panel[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>("all");
@@ -27,10 +29,16 @@ export default function Home() {
     setLoading(false);
   }
 
+  const deleteFailed = (msg: string) =>
+    t(`Gagal menghapus: ${msg}`, `Failed to delete: ${msg}`);
+
   async function deleteProject(proj: Project) {
     if (
       !confirm(
-        `Hapus project "${proj.name}" beserta SEMUA panel & circuit di dalamnya? Tidak bisa dibatalkan.`
+        t(
+          `Hapus project "${proj.name}" beserta SEMUA panel & circuit di dalamnya? Tidak bisa dibatalkan.`,
+          `Delete project "${proj.name}" along with ALL panels & circuits inside it? This cannot be undone.`
+        )
       )
     )
       return;
@@ -42,19 +50,22 @@ export default function Home() {
     const { error: e2 } = e1
       ? { error: e1 }
       : await supabase.from("projects").delete().eq("id", proj.id);
-    if (e1 || e2) alert(`Gagal menghapus: ${(e1 ?? e2)!.message}`);
+    if (e1 || e2) alert(deleteFailed((e1 ?? e2)!.message));
     else load();
   }
 
   async function deletePanel(panel: Panel) {
     if (
       !confirm(
-        `Hapus panel "${panel.panel_code}" beserta semua circuit-nya? Tidak bisa dibatalkan.`
+        t(
+          `Hapus panel "${panel.panel_code}" beserta semua circuit-nya? Tidak bisa dibatalkan.`,
+          `Delete panel "${panel.panel_code}" along with all of its circuits? This cannot be undone.`
+        )
       )
     )
       return;
     const { error } = await supabase.from("panels").delete().eq("id", panel.id);
-    if (error) alert(`Gagal menghapus: ${error.message}`);
+    if (error) alert(deleteFailed(error.message));
     else load();
   }
 
@@ -84,8 +95,10 @@ export default function Home() {
       <header className="mb-8">
         <h1 className="text-2xl font-bold">Panel Schedule</h1>
         <p className="text-sm text-neutral-600">
-          Realtime dari Revit via Supabase — klik panel untuk lihat schedule +
-          SLD
+          {t(
+            "Realtime dari Revit via Supabase — klik panel untuk lihat schedule + SLD",
+            "Realtime from Revit via Supabase — click a panel to see its schedule + SLD"
+          )}
         </p>
         {projects.length > 0 && (
           <div className="mt-4">
@@ -95,7 +108,7 @@ export default function Home() {
               onChange={(e) => setSelectedProject(e.target.value)}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm"
             >
-              <option value="all">Semua project</option>
+              <option value="all">{t("Semua project", "All projects")}</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -106,23 +119,35 @@ export default function Home() {
         )}
       </header>
 
-      {loading && <p className="text-neutral-500">Memuat data…</p>}
+      {loading && (
+        <p className="text-neutral-500">{t("Memuat data…", "Loading data…")}</p>
+      )}
 
       {error && (
         <div className="rounded border border-red-300 bg-red-50 p-4 text-sm text-red-800">
-          <p className="font-semibold">Gagal koneksi ke Supabase</p>
+          <p className="font-semibold">
+            {t("Gagal koneksi ke Supabase", "Could not connect to Supabase")}
+          </p>
           <p className="mt-1">{error}</p>
           <p className="mt-2">
-            Kalau tabel belum ada, jalankan <code>supabase/schema.sql</code>{" "}
-            (lalu <code>supabase/seed.sql</code>) di Supabase SQL Editor.
+            <Rich
+              text={t(
+                "Kalau tabel belum ada, jalankan `supabase/schema.sql` (lalu `supabase/seed.sql`) di Supabase SQL Editor.",
+                "If the tables don't exist yet, run `supabase/schema.sql` (then `supabase/seed.sql`) in the Supabase SQL Editor."
+              )}
+            />
           </p>
         </div>
       )}
 
       {!loading && !error && panels.length === 0 && (
         <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          Belum ada panel. Jalankan <code>supabase/seed.sql</code> untuk data
-          contoh, atau push dari Revit add-in.
+          <Rich
+            text={t(
+              "Belum ada panel. Jalankan `supabase/seed.sql` untuk data contoh, atau push dari Revit add-in.",
+              "No panels yet. Run `supabase/seed.sql` for sample data, or push from the Revit add-in."
+            )}
+          />
         </div>
       )}
 
@@ -144,10 +169,13 @@ export default function Home() {
               </h2>
               <button
                 onClick={() => deleteProject(proj)}
-                title={`Hapus project ${proj.name}`}
+                title={t(
+                  `Hapus project ${proj.name}`,
+                  `Delete project ${proj.name}`
+                )}
                 className="rounded border border-red-200 bg-white px-2.5 py-1 text-xs text-red-600 transition hover:border-red-500 hover:bg-red-50"
               >
-                🗑 Hapus project
+                🗑 {t("Hapus project", "Delete project")}
               </button>
             </div>
             <ul className="grid gap-3 sm:grid-cols-2">
@@ -182,7 +210,10 @@ export default function Home() {
                       e.stopPropagation();
                       deletePanel(panel);
                     }}
-                    title={`Hapus panel ${panel.panel_code}`}
+                    title={t(
+                      `Hapus panel ${panel.panel_code}`,
+                      `Delete panel ${panel.panel_code}`
+                    )}
                     className="absolute bottom-3 right-3 z-10 rounded border border-red-200 bg-white px-1.5 py-1 text-xs text-red-500 transition hover:border-red-500 hover:bg-red-50 hover:text-red-700"
                   >
                     🗑
@@ -195,7 +226,10 @@ export default function Home() {
       })}
 
       <footer className="mt-12 border-t border-neutral-300 pt-4 text-xs text-neutral-500">
-        Fase 1 — tabel + SLD realtime. Berikutnya: export Excel / PDF / DXF.
+        {t(
+          "Fase 1 — tabel + SLD realtime. Berikutnya: export Excel / PDF / DXF.",
+          "Phase 1 — realtime table + SLD. Next: Excel / PDF / DXF export."
+        )}
       </footer>
     </main>
   );
