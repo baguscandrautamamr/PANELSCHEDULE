@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
 import { is3Phase, panelVoltage } from "@/lib/panelCalc";
+import { Rich, useI18n } from "@/lib/i18n";
 
 const nf = new Intl.NumberFormat("en-US");
 const nf1 = new Intl.NumberFormat("en-US", {
@@ -133,6 +134,7 @@ export default function PanelScheduleTable({
   circuits: Circuit[];
   projectName?: string | null;
 }) {
+  const { lang, t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -140,9 +142,13 @@ export default function PanelScheduleTable({
   const [exporting, setExporting] = useState<"excel" | "dxf" | null>(null);
   const cols = buildFixtureColumns(circuits);
 
+  /** Pesan gagal: "<aksi>: <pesan Supabase>" dalam bahasa aktif. */
+  const failed = (id: string, en: string, msg: string) =>
+    `${t(id, en)}: ${msg}`;
+
   async function updateCircuit(id: string, patch: Record<string, string | null>) {
     const { error } = await supabase.from("circuits").update(patch).eq("id", id);
-    if (error) alert(`Gagal menyimpan: ${error.message}`);
+    if (error) alert(failed("Gagal menyimpan", "Failed to save", error.message));
   }
 
   /// Tukar circuit_no dua circuit lewat nilai sementara supaya tidak
@@ -171,7 +177,8 @@ export default function PanelScheduleTable({
       : await supabase.from("circuits").update({ circuit_no: bOrig }).eq("id", a.id);
 
     const err = e1 ?? e2 ?? e3;
-    if (err) alert(`Gagal memindahkan urutan: ${err.message}`);
+    if (err)
+      alert(failed("Gagal memindahkan urutan", "Failed to reorder", err.message));
   }
 
   /// Rebalance web-only: redistribusi circuit 1-fase ke R/S/T yang paling
@@ -181,7 +188,10 @@ export default function PanelScheduleTable({
   async function rebalanceLoads() {
     if (
       !confirm(
-        "Hitung ulang pembagian fase R/S/T untuk semua circuit 1-fase di panel ini? Circuit 3-fase tidak berubah."
+        t(
+          "Hitung ulang pembagian fase R/S/T untuk semua circuit 1-fase di panel ini? Circuit 3-fase tidak berubah.",
+          "Recalculate the R/S/T phase split for every single-phase circuit in this panel? Three-phase circuits stay unchanged."
+        )
       )
     )
       return;
@@ -191,16 +201,17 @@ export default function PanelScheduleTable({
 
     for (const c of circuits) {
       if (c.is_spare) continue;
+      // sengaja bukan `t` — nama itu dipakai fungsi terjemahan di komponen ini
       const r = Number(c.phase_r || 0);
       const s = Number(c.phase_s || 0);
-      const t = Number(c.phase_t || 0);
-      const nonZero = [r, s, t].filter((v) => v > 0).length;
+      const tt = Number(c.phase_t || 0);
+      const nonZero = [r, s, tt].filter((v) => v > 0).length;
       if (nonZero >= 2) {
         totals.R += r;
         totals.S += s;
-        totals.T += t;
+        totals.T += tt;
       } else if (nonZero === 1) {
-        singlePhase.push({ id: c.id, watt: r || s || t });
+        singlePhase.push({ id: c.id, watt: r || s || tt });
       }
     }
 
@@ -225,7 +236,7 @@ export default function PanelScheduleTable({
         })
         .eq("id", item.id);
       if (error) {
-        alert(`Gagal rebalance: ${error.message}`);
+        alert(failed("Gagal rebalance", "Rebalance failed", error.message));
         return;
       }
     }
@@ -251,7 +262,7 @@ export default function PanelScheduleTable({
         .update({ circuit_no: to + 100000 })
         .eq("id", c.id);
       if (error) {
-        alert(`Gagal merapikan nomor: ${error.message}`);
+        alert(failed("Gagal merapikan nomor", "Failed to renumber", error.message));
         return;
       }
     }
@@ -261,7 +272,7 @@ export default function PanelScheduleTable({
         .update({ circuit_no: to })
         .eq("id", c.id);
       if (error) {
-        alert(`Gagal merapikan nomor: ${error.message}`);
+        alert(failed("Gagal merapikan nomor", "Failed to renumber", error.message));
         return;
       }
     }
@@ -270,11 +281,20 @@ export default function PanelScheduleTable({
   async function deleteCircuit(c: Circuit) {
     const isManual = c.source === "manual";
     const msg = isManual
-      ? `Hapus load manual "${c.function_name}" (no. ${c.circuit_no})?`
-      : `Hapus circuit ${c.circuit_no} "${c.function_name}"?\n\n` +
-        `Circuit ini milik Revit — dia akan di-DISCONNECT dari panel saat ` +
-        `"Pull from Website" dijalankan di Revit. Kalau Push to Website ` +
-        `dijalankan lagi SEBELUM Pull, circuit ini muncul kembali.`;
+      ? t(
+          `Hapus load manual "${c.function_name}" (no. ${c.circuit_no})?`,
+          `Delete manual load "${c.function_name}" (no. ${c.circuit_no})?`
+        )
+      : t(
+          `Hapus circuit ${c.circuit_no} "${c.function_name}"?\n\n` +
+            `Circuit ini milik Revit — dia akan di-DISCONNECT dari panel saat ` +
+            `"Pull from Website" dijalankan di Revit. Kalau Push to Website ` +
+            `dijalankan lagi SEBELUM Pull, circuit ini muncul kembali.`,
+          `Delete circuit ${c.circuit_no} "${c.function_name}"?\n\n` +
+            `This circuit belongs to Revit — it will be DISCONNECTED from the panel ` +
+            `when "Pull from Website" runs in Revit. If Push to Website runs again ` +
+            `BEFORE that Pull, the circuit comes back.`
+        );
     if (!confirm(msg)) return;
 
     // baris manual dihapus langsung; baris Revit ditandai dengan nomor negatif
@@ -286,7 +306,7 @@ export default function PanelScheduleTable({
           .update({ circuit_no: -c.circuit_no })
           .eq("id", c.id);
     if (error) {
-      alert(`Gagal menghapus: ${error.message}`);
+      alert(failed("Gagal menghapus", "Failed to delete", error.message));
       return;
     }
     await compactManualNumbers(c.id);
@@ -321,7 +341,7 @@ export default function PanelScheduleTable({
 
   async function submitCircuitForm() {
     if (!newCircuit.function_name.trim()) {
-      alert("Nama FUNCTION wajib diisi.");
+      alert(t("Nama FUNCTION wajib diisi.", "FUNCTION name is required."));
       return;
     }
     const watt = parseFloat(newCircuit.watt) || 0;
@@ -348,7 +368,7 @@ export default function PanelScheduleTable({
     if (editingId) {
       const { error } = await supabase.from("circuits").update(patch).eq("id", editingId);
       if (error) {
-        alert(`Gagal menyimpan perubahan: ${error.message}`);
+        alert(failed("Gagal menyimpan perubahan", "Failed to save changes", error.message));
         return;
       }
     } else {
@@ -364,7 +384,7 @@ export default function PanelScheduleTable({
           source: "manual",
         });
       if (error) {
-        alert(`Gagal menambah load: ${error.message}`);
+        alert(failed("Gagal menambah load", "Failed to add load", error.message));
         return;
       }
     }
@@ -374,9 +394,15 @@ export default function PanelScheduleTable({
   async function handleExportExcel() {
     setExporting("excel");
     try {
-      await exportPanelToExcel(panel, circuits, cols, projectName ?? null);
+      await exportPanelToExcel(panel, circuits, cols, projectName ?? null, lang);
     } catch (e) {
-      alert(`Gagal export Excel: ${e instanceof Error ? e.message : String(e)}`);
+      alert(
+        failed(
+          "Gagal export Excel",
+          "Excel export failed",
+          e instanceof Error ? e.message : String(e)
+        )
+      );
     } finally {
       setExporting(null);
     }
@@ -385,9 +411,15 @@ export default function PanelScheduleTable({
   function handleExportDxf() {
     setExporting("dxf");
     try {
-      exportPanelToDxf(panel, circuits, cols, projectName ?? null);
+      exportPanelToDxf(panel, circuits, cols, projectName ?? null, lang);
     } catch (e) {
-      alert(`Gagal export DXF: ${e instanceof Error ? e.message : String(e)}`);
+      alert(
+        failed(
+          "Gagal export DXF",
+          "DXF export failed",
+          e instanceof Error ? e.message : String(e)
+        )
+      );
     } finally {
       setExporting(null);
     }
@@ -462,7 +494,9 @@ export default function PanelScheduleTable({
                   : "border-neutral-300 bg-white text-neutral-700 hover:border-blue-500"
               }`}
             >
-              {editing ? "✓ Selesai edit" : "✎ Edit function, breaker & kabel"}
+              {editing
+                ? t("✓ Selesai edit", "✓ Done editing")
+                : t("✎ Edit function, breaker & kabel", "✎ Edit function, breaker & cable")}
             </button>
             <button
               onClick={rebalanceLoads}
@@ -474,22 +508,31 @@ export default function PanelScheduleTable({
               onClick={() => (showAdd ? closeForm() : openAddForm())}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
             >
-              {showAdd ? "✕ Batal" : "+ Tambah Load"}
+              {showAdd
+                ? t("✕ Batal", "✕ Cancel")
+                : t("+ Tambah Load", "+ Add Load")}
             </button>
             <button
               onClick={handleExportExcel}
               disabled={exporting !== null}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500 disabled:opacity-50"
             >
-              {exporting === "excel" ? "Menyiapkan…" : "📊 Export Excel"}
+              {exporting === "excel"
+                ? t("Menyiapkan…", "Preparing…")
+                : "📊 Export Excel"}
             </button>
             <button
               onClick={handleExportDxf}
               disabled={exporting !== null}
-              title="DXF R12 (AutoCAD/BricsCAD/Revit) — SLD + tabel, skala 1:1 mm, simbol breaker jadi block"
+              title={t(
+                "DXF R12 (AutoCAD/BricsCAD/Revit) — SLD + tabel, skala 1:1 mm, simbol breaker jadi block",
+                "DXF R12 (AutoCAD/BricsCAD/Revit) — SLD + table, 1:1 mm scale, breaker symbols as blocks"
+              )}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500 disabled:opacity-50"
             >
-              {exporting === "dxf" ? "Menyiapkan…" : "📐 Export CAD (DXF)"}
+              {exporting === "dxf"
+                ? t("Menyiapkan…", "Preparing…")
+                : "📐 Export CAD (DXF)"}
             </button>
           </div>
         </div>
@@ -497,28 +540,37 @@ export default function PanelScheduleTable({
 
       {editing && (
         <p className="no-print mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
-          Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah cepat, tekan
-          Enter atau klik di luar untuk menyimpan. Klik <b>✎</b> di kolom NO.
-          untuk edit lengkap (termasuk WATT, FASE, REMARKS) lewat form. Panah
-          ▲▼ untuk pindah urutan, <b>🗑</b> untuk hapus baris — load manual
-          langsung terhapus (nomor manual lain naik mengisi celah); circuit
-          Revit akan di-<b>disconnect</b> dari panel saat Pull from Website
-          dijalankan (Push sebelum Pull membatalkan hapusnya). Jalankan{" "}
-          <b>Pull from Website</b> di Revit
-          add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — kalau tidak
-          berubah di Revit, parameternya read-only di family tersebut. Urutan
-          (▲▼) dan hasil <b>Rebalance Loads</b> tersimpan di website saja;
-          Push berikutnya dari Revit akan menimpa sesuai kondisi model asli —
-          kecuali load manual (badge <b>M</b>) yang selalu dipertahankan;
-          nomornya otomatis bergeser ke bawah kalau bentrok dengan circuit
-          Revit baru.
+          <Rich
+            text={t(
+              "Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah cepat, tekan Enter atau klik di luar untuk menyimpan. " +
+                "Klik **✎** di kolom NO. untuk edit lengkap (termasuk WATT, FASE, REMARKS) lewat form. " +
+                "Panah ▲▼ untuk pindah urutan, **🗑** untuk hapus baris — load manual langsung terhapus " +
+                "(nomor manual lain naik mengisi celah); circuit Revit akan di-**disconnect** dari panel saat " +
+                "Pull from Website dijalankan (Push sebelum Pull membatalkan hapusnya). " +
+                "Jalankan **Pull from Website** di Revit add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — " +
+                "kalau tidak berubah di Revit, parameternya read-only di family tersebut. " +
+                "Urutan (▲▼) dan hasil **Rebalance Loads** tersimpan di website saja; Push berikutnya dari Revit " +
+                "akan menimpa sesuai kondisi model asli — kecuali load manual (badge **M**) yang selalu " +
+                "dipertahankan; nomornya otomatis bergeser ke bawah kalau bentrok dengan circuit Revit baru.",
+              "Click the FUNCTION / BREAKER / CABLE cells for a quick edit, press Enter or click outside to save. " +
+                "Click **✎** in the NO. column for a full edit (including WATT, PHASE, REMARKS) through the form. " +
+                "Use ▲▼ to reorder and **🗑** to delete a row — manual loads are removed right away " +
+                "(the other manual numbers close the gap); Revit circuits are **disconnected** from the panel when " +
+                "Pull from Website runs (a Push before that Pull undoes the deletion). " +
+                "Run **Pull from Website** in the Revit add-in to bring FUNCTION/BREAKER/CABLE into the model — " +
+                "if nothing changes in Revit, those parameters are read-only in that family. " +
+                "The order (▲▼) and the **Rebalance Loads** result live on the website only; the next Push from Revit " +
+                "overwrites them with the real model state — except manual loads (badge **M**), which are always " +
+                "kept; their numbers shift down automatically if they clash with a new Revit circuit."
+            )}
+          />
         </p>
       )}
 
       {showAdd && (
         <div className="no-print mb-3 flex flex-wrap items-end gap-2 rounded border border-blue-200 bg-blue-50 p-3">
           <p className="w-full text-xs font-semibold text-blue-800">
-            {editingId ? "Edit circuit" : "Tambah load baru"}
+            {editingId ? t("Edit circuit", "Edit circuit") : t("Tambah load baru", "Add new load")}
           </p>
           <label className="flex flex-col text-xs text-neutral-600">
             FUNCTION
@@ -528,7 +580,7 @@ export default function PanelScheduleTable({
                 setNewCircuit((s) => ({ ...s, function_name: e.target.value }))
               }
               className="rounded border border-neutral-300 px-2 py-1 text-xs"
-              placeholder="mis. LIGHTING (L4-20)"
+              placeholder={t("mis. LIGHTING (L4-20)", "e.g. LIGHTING (L4-20)")}
             />
           </label>
           <label className="flex flex-col text-xs text-neutral-600">
@@ -580,7 +632,7 @@ export default function PanelScheduleTable({
             />
           </label>
           <label className="flex flex-col text-xs text-neutral-600">
-            FASE
+            {t("FASE", "PHASE")}
             <select
               value={newCircuit.phase}
               onChange={(e) =>
@@ -591,10 +643,10 @@ export default function PanelScheduleTable({
               }
               className="rounded border border-neutral-300 px-2 py-1 text-xs"
             >
-              <option value="R">R (1-fase)</option>
-              <option value="S">S (1-fase)</option>
-              <option value="T">T (1-fase)</option>
-              <option value="3PH">3-fase (balance)</option>
+              <option value="R">{t("R (1-fase)", "R (1-phase)")}</option>
+              <option value="S">{t("S (1-fase)", "S (1-phase)")}</option>
+              <option value="T">{t("T (1-fase)", "T (1-phase)")}</option>
+              <option value="3PH">{t("3-fase (balance)", "3-phase (balanced)")}</option>
             </select>
           </label>
           <label className="flex flex-col text-xs text-neutral-600">
@@ -611,13 +663,15 @@ export default function PanelScheduleTable({
             onClick={submitCircuitForm}
             className="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
           >
-            {editingId ? "Simpan perubahan" : "Tambah"}
+            {editingId
+              ? t("Simpan perubahan", "Save changes")
+              : t("Tambah", "Add")}
           </button>
           <button
             onClick={closeForm}
             className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
           >
-            Batal
+            {t("Batal", "Cancel")}
           </button>
         </div>
       )}
@@ -709,7 +763,7 @@ export default function PanelScheduleTable({
                         <button
                           disabled={idx === 0}
                           onClick={() => moveCircuit(idx, -1)}
-                          title="Pindah naik"
+                          title={t("Pindah naik", "Move up")}
                           className="text-[9px] text-neutral-400 hover:text-blue-600 disabled:opacity-20"
                         >
                           ▲
@@ -717,7 +771,7 @@ export default function PanelScheduleTable({
                         <button
                           disabled={idx === circuits.length - 1}
                           onClick={() => moveCircuit(idx, 1)}
-                          title="Pindah turun"
+                          title={t("Pindah turun", "Move down")}
                           className="text-[9px] text-neutral-400 hover:text-blue-600 disabled:opacity-20"
                         >
                           ▼
@@ -727,7 +781,10 @@ export default function PanelScheduleTable({
                     <span
                       title={
                         c.revit_circuit_number
-                          ? `Circuit Number di Revit: ${c.revit_circuit_number}`
+                          ? t(
+                              `Circuit Number di Revit: ${c.revit_circuit_number}`,
+                              `Circuit Number in Revit: ${c.revit_circuit_number}`
+                            )
                           : undefined
                       }
                     >
@@ -735,7 +792,10 @@ export default function PanelScheduleTable({
                     </span>
                     {c.source === "manual" && (
                       <span
-                        title="Load manual dari website — tidak ditimpa/dihapus saat Push dari Revit; nomornya bisa bergeser ke bawah kalau bentrok dengan circuit Revit baru"
+                        title={t(
+                          "Load manual dari website — tidak ditimpa/dihapus saat Push dari Revit; nomornya bisa bergeser ke bawah kalau bentrok dengan circuit Revit baru",
+                          "Manual load from the website — never overwritten/removed by a Push from Revit; its number can shift down if it clashes with a new Revit circuit"
+                        )}
                         className="rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-700"
                       >
                         M
@@ -745,7 +805,10 @@ export default function PanelScheduleTable({
                       <>
                         <button
                           onClick={() => openEditForm(c)}
-                          title="Edit lengkap circuit ini (termasuk watt, fase, remarks)"
+                          title={t(
+                            "Edit lengkap circuit ini (termasuk watt, fase, remarks)",
+                            "Full edit for this circuit (including watt, phase, remarks)"
+                          )}
                           className="no-print text-[10px] text-blue-500 hover:text-blue-700"
                         >
                           ✎
@@ -754,8 +817,11 @@ export default function PanelScheduleTable({
                           onClick={() => deleteCircuit(c)}
                           title={
                             c.source === "manual"
-                              ? "Hapus load manual ini"
-                              : "Hapus circuit ini — akan di-disconnect dari panel saat Pull from Website di Revit"
+                              ? t("Hapus load manual ini", "Delete this manual load")
+                              : t(
+                                  "Hapus circuit ini — akan di-disconnect dari panel saat Pull from Website di Revit",
+                                  "Delete this circuit — it gets disconnected from the panel on Pull from Website in Revit"
+                                )
                           }
                           className="no-print text-[10px] text-red-400 hover:text-red-600"
                         >
@@ -892,7 +958,9 @@ export default function PanelScheduleTable({
       </table>
 
       <div className="print-keep mt-3 space-y-1 border-t border-neutral-200 pt-2 text-[11px] text-neutral-600">
-        <p className="font-semibold text-neutral-700">Rumus perhitungan:</p>
+        <p className="font-semibold text-neutral-700">
+          {t("Rumus perhitungan:", "Calculation formulas:")}
+        </p>
         <p>
           TOTAL WATT = ΣR + ΣS + ΣT = {nf.format(subR)} + {nf.format(subS)} +{" "}
           {nf.format(subT)} = {nf1.format(totalWatt)} W

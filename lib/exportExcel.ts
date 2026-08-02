@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import { is3Phase, panelVoltage } from "./panelCalc";
+import { makeT, type Lang } from "./i18n";
 
 interface FixtureCol {
   key: string;
@@ -86,8 +87,10 @@ export async function exportPanelToExcel(
   panel: Panel,
   circuits: Circuit[],
   cols: FixtureCol[],
-  projectName: string | null
+  projectName: string | null,
+  lang: Lang = "id"
 ) {
+  const t = makeT(lang);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Panel Schedule Web";
   wb.created = new Date();
@@ -559,29 +562,60 @@ export async function exportPanelToExcel(
   // di atas, jadi kalau ada yang diedit catatan ini tidak jadi basi.
   const cellRef = (col: number, row: number) => `${L(col)}${row}`;
   const notes = [
-    "Rumus perhitungan (angka di kolom DEMAND LOAD & baris ringkasan adalah formula Excel, ikut berubah kalau data diedit):",
+    t(
+      "Rumus perhitungan (angka di kolom DEMAND LOAD & baris ringkasan adalah formula Excel, ikut berubah kalau data diedit):",
+      "Calculation formulas (the numbers in the DEMAND LOAD columns & summary rows are Excel formulas — they follow any edit):"
+    ),
     ...(nFix > 0
       ? [
-          `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(qty kolom FIXTURE x baris WATT / UNIT di baris ${rWattUnit}), dibagi 3 untuk circuit 3 fase seimbang`,
+          t(
+            `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(qty kolom FIXTURE x baris WATT / UNIT di baris ${rWattUnit}), dibagi 3 untuk circuit 3 fase seimbang`,
+            `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(FIXTURE column qty x the WATT / UNIT row at row ${rWattUnit}), divided by 3 for balanced three-phase circuits`
+          ),
           fallbackRows > 0
-            ? `Catatan: ${fallbackRows} circuit tetap memakai angka demand load dari Revit (bukan formula) karena hasil qty x watt/unit tidak sama dengan nilai Revit — mis. watt/unit tidak diketahui atau bebannya tidak berasal dari fixture.`
-            : "Semua circuit yang berbeban memakai formula qty x watt/unit.",
+            ? t(
+                `Catatan: ${fallbackRows} circuit tetap memakai angka demand load dari Revit (bukan formula) karena hasil qty x watt/unit tidak sama dengan nilai Revit — mis. watt/unit tidak diketahui atau bebannya tidak berasal dari fixture.`,
+                `Note: ${fallbackRows} circuits keep the demand load figure from Revit (not a formula) because qty x watt/unit does not match the Revit value — e.g. watt/unit is unknown or the load does not come from fixtures.`
+              )
+            : t(
+                "Semua circuit yang berbeban memakai formula qty x watt/unit.",
+                "Every loaded circuit uses the qty x watt/unit formula."
+              ),
           ...(derivedCount > 0
             ? [
-                `Angka WATT / UNIT yang dicetak MIRING (${derivedCount} kolom) tidak ada di data Revit — diturunkan dari demand load / qty pada circuit yang hanya memakai kolom itu. Sebaiknya dicek ulang terhadap spesifikasi fixture.`,
+                t(
+                  `Angka WATT / UNIT yang dicetak MIRING (${derivedCount} kolom) tidak ada di data Revit — diturunkan dari demand load / qty pada circuit yang hanya memakai kolom itu. Sebaiknya dicek ulang terhadap spesifikasi fixture.`,
+                  `The ITALIC WATT / UNIT figures (${derivedCount} columns) are not in the Revit data — they are derived from demand load / qty on circuits that use only that column. Please check them against the fixture specification.`
+                ),
               ]
             : []),
         ]
       : []),
-    `SUB TOTAL R/S/T (${cellRef(C_R, rSub)}..${cellRef(C_R + 2, rSub)}) = SUM per kolom fase, baris ${bodyTop}-${bodyBottom}`,
+    t(
+      `SUB TOTAL R/S/T (${cellRef(C_R, rSub)}..${cellRef(C_R + 2, rSub)}) = SUM per kolom fase, baris ${bodyTop}-${bodyBottom}`,
+      `SUB TOTAL R/S/T (${cellRef(C_R, rSub)}..${cellRef(C_R + 2, rSub)}) = SUM per phase column, rows ${bodyTop}-${bodyBottom}`
+    ),
     `TOTAL WATT (${cellRef(C_R, rWatt)}) = SUB TOTAL R + S + T`,
-    `TOTAL VA (${cellRef(C_R, rVA)}) = TOTAL WATT / cos phi (sel ${cellRef(C_BRK, rPf)})`,
-    `CONNECTED AMPERE (${cellRef(C_R, rAmp)}) = TOTAL VA / ${
-      is3ph ? `(SQRT(3) x V L-L)` : "V L-N"
-    } (sel ${cellRef(C_BRK, rVolt)})`,
-    `Sel berwarna kuning (cos phi ${cellRef(C_BRK, rPf)}, tegangan ${cellRef(C_BRK, rVolt)}${
-      nFix > 0 ? `, baris WATT / UNIT ${rWattUnit}` : ""
-    }) boleh diubah — angka di bawahnya ikut menyesuaikan.`,
+    t(
+      `TOTAL VA (${cellRef(C_R, rVA)}) = TOTAL WATT / cos phi (sel ${cellRef(C_BRK, rPf)})`,
+      `TOTAL VA (${cellRef(C_R, rVA)}) = TOTAL WATT / cos phi (cell ${cellRef(C_BRK, rPf)})`
+    ),
+    t(
+      `CONNECTED AMPERE (${cellRef(C_R, rAmp)}) = TOTAL VA / ${
+        is3ph ? `(SQRT(3) x V L-L)` : "V L-N"
+      } (sel ${cellRef(C_BRK, rVolt)})`,
+      `CONNECTED AMPERE (${cellRef(C_R, rAmp)}) = TOTAL VA / ${
+        is3ph ? `(SQRT(3) x V L-L)` : "V L-N"
+      } (cell ${cellRef(C_BRK, rVolt)})`
+    ),
+    t(
+      `Sel berwarna kuning (cos phi ${cellRef(C_BRK, rPf)}, tegangan ${cellRef(C_BRK, rVolt)}${
+        nFix > 0 ? `, baris WATT / UNIT ${rWattUnit}` : ""
+      }) boleh diubah — angka di bawahnya ikut menyesuaikan.`,
+      `The yellow cells (cos phi ${cellRef(C_BRK, rPf)}, voltage ${cellRef(C_BRK, rVolt)}${
+        nFix > 0 ? `, WATT / UNIT row ${rWattUnit}` : ""
+      }) can be edited — everything below follows.`
+    ),
   ];
   notes.forEach((text, i) => {
     r += 1;

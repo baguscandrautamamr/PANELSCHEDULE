@@ -19,8 +19,9 @@ public class PushCommand : IExternalCommand
 
             if (panels.Count == 0)
             {
-                TaskDialog.Show("Panel Schedule Sync",
-                    "Tidak ada panel (electrical equipment dengan assigned circuits) di model ini.");
+                TaskDialog.Show(L.DialogTitle, L.T(
+                    "Tidak ada panel (electrical equipment dengan assigned circuits) di model ini.",
+                    "No panels (electrical equipment with assigned circuits) in this model."));
                 return Result.Cancelled;
             }
 
@@ -41,7 +42,8 @@ public class PushCommand : IExternalCommand
             }
 
             string panelSummary = string.Join("\n",
-                panels.Select(p => $"• {p.PanelCode} ({p.Circuits.Count} circuit)"));
+                panels.Select(p => $"• {p.PanelCode} ({p.Circuits.Count} circuit)"
+                                   + (L.IsEnglish && p.Circuits.Count != 1 ? "s" : "")));
 
             var picker = new ProjectPickerWindow(existingProjects, defaultProject, panelSummary);
             if (picker.ShowDialog() != true)
@@ -51,14 +53,16 @@ public class PushCommand : IExternalCommand
             string summary = Task.Run(() => client.PushAsync(projectName, panels))
                 .GetAwaiter().GetResult();
 
-            TaskDialog.Show("Panel Schedule Sync",
-                $"Berhasil push ke project \"{projectName}\":\n\n{summary}");
+            TaskDialog.Show(L.DialogTitle,
+                L.T($"Berhasil push ke project \"{projectName}\":",
+                    $"Pushed successfully to project \"{projectName}\":")
+                + $"\n\n{summary}");
             return Result.Succeeded;
         }
         catch (Exception ex)
         {
             message = ex.Message;
-            TaskDialog.Show("Panel Schedule Sync — Error", ex.ToString());
+            TaskDialog.Show($"{L.DialogTitle} — Error", ex.ToString());
             return Result.Failed;
         }
     }

@@ -199,8 +199,11 @@ public class SupabaseClient
             }
 
             string manualInfo = manualRows.Count > 0
-                ? $" (+{manualRows.Count} load manual dipertahankan"
-                  + (movedManual > 0 ? $", {movedManual} digeser nomornya)" : ")")
+                ? L.T($" (+{manualRows.Count} load manual dipertahankan",
+                      $" (+{manualRows.Count} manual loads kept")
+                  + (movedManual > 0
+                      ? L.T($", {movedManual} digeser nomornya)", $", {movedManual} renumbered)")
+                      : ")")
                 : "";
             summary.AppendLine($"{panel.PanelCode}: {panel.Circuits.Count} circuit{manualInfo}");
         }

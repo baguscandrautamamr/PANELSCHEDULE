@@ -1,7 +1,8 @@
 # Panel Schedule Web
 
 Website realtime panel schedule dari Revit: tabel (format Archetype/Barry Callebaut),
-SLD dinamis, dan export Excel / PDF / DXF.
+SLD dinamis, dan export Excel / PDF / DXF. UI dua bahasa (Indonesia / English),
+begitu juga add-in Revit-nya.
 
 **Alur data:**
 
@@ -109,6 +110,14 @@ npm run dev   # http://localhost:3000
   `circuits.revit_circuit_number`), dibandingkan sebagai teks. Prefix panel apa
   pun dari setting Circuit Naming (`(D)/7`, `DB-FG/42`, `L1-7`) ikut kena tanpa
   perlu di-parse.
+- **Dual bahasa (Indonesia / English)**: tombol **ID | EN** di bar atas (dan di
+  halaman login). Semua teks UI, tooltip, konfirmasi, dan catatan rumus di
+  export Excel / DXF ikut bahasa yang dipilih. Header tabel yang bersifat
+  teknis (NO., FUNCTION, BREAKER, DEMAND LOAD, TOTAL VA, …) sengaja tetap sama
+  di kedua bahasa supaya cetakan schedule konsisten dengan drawing. Pilihan
+  disimpan di browser (`localStorage`); kalau belum pernah memilih, ikut bahasa
+  browser. Add-in Revit punya tombol **Language** sendiri dengan pasangan teks
+  yang sama.
 
 ## Roadmap
 
@@ -125,6 +134,8 @@ app/page.tsx              # list project + panel (realtime)
 app/panel/[id]/page.tsx   # detail panel: SLD + tabel (realtime)
 components/PanelScheduleTable.tsx
 components/PanelSLD.tsx
+components/LanguageSwitch.tsx  # tombol ID | EN
+lib/i18n.tsx              # dual bahasa: provider + t("teks id", "english text")
 lib/supabase.ts           # client Supabase (publishable key)
 lib/types.ts
 lib/exportExcel.ts        # export .xlsx (exceljs)

@@ -19,17 +19,18 @@ public class ProjectPickerWindow : Window
 
     public ProjectPickerWindow(IEnumerable<string> existingProjects, string defaultName, string panelSummary)
     {
-        Title = "Panel Schedule Sync — Push to Website";
+        Title = $"{L.DialogTitle} — {L.T("Push ke Website", "Push to Website")}";
         Width = 460;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
+        Icon = RibbonIcons.Push32;
 
         var root = new StackPanel { Margin = new Thickness(16) };
 
         root.Children.Add(new TextBlock
         {
-            Text = "Panel yang akan di-push:",
+            Text = L.T("Panel yang akan di-push:", "Panels to push:"),
             FontWeight = FontWeights.Bold,
         });
         root.Children.Add(new TextBlock
@@ -41,7 +42,9 @@ public class ProjectPickerWindow : Window
 
         root.Children.Add(new TextBlock
         {
-            Text = "Project tujuan (pilih yang ada, atau ketik nama project baru):",
+            Text = L.T(
+                "Project tujuan (pilih yang ada, atau ketik nama project baru):",
+                "Target project (pick an existing one, or type a new project name):"),
             TextWrapping = TextWrapping.Wrap,
         });
 
@@ -60,13 +63,19 @@ public class ProjectPickerWindow : Window
         {
             if (string.IsNullOrWhiteSpace(SelectedProject))
             {
-                MessageBox.Show(this, "Nama project tidak boleh kosong.", Title,
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(this,
+                    L.T("Nama project tidak boleh kosong.", "Project name cannot be empty."),
+                    Title, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             DialogResult = true;
         };
-        var cancel = new Button { Content = "Batal", Width = 90, IsCancel = true };
+        var cancel = new Button
+        {
+            Content = L.T("Batal", "Cancel"),
+            Width = 90,
+            IsCancel = true,
+        };
         buttons.Children.Add(ok);
         buttons.Children.Add(cancel);
         root.Children.Add(buttons);
