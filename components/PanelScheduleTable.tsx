@@ -6,7 +6,7 @@ import { fixtureKey } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
-import { is3Phase, panelVoltage } from "@/lib/panelCalc";
+import { is3Phase, panelPowerFactor, panelVoltage } from "@/lib/panelCalc";
 import { Rich, useI18n } from "@/lib/i18n";
 
 const nf = new Intl.NumberFormat("en-US");
@@ -438,7 +438,7 @@ export default function PanelScheduleTable({
   const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
   const totalWatt = subR + subS + subT;
 
-  const pf = Number(panel.power_factor ?? 0.8) || 0.8;
+  const pf = panelPowerFactor(panel);
   const totalVA = totalWatt / pf;
   const is3ph = is3Phase(panel);
   const volt = panelVoltage(panel);

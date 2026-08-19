@@ -21,3 +21,20 @@ export function panelVoltage(panel: Panel): number {
   if (!nums || nums.length === 0) return three ? 400 : 230;
   return three ? Math.max(...nums) : Math.min(...nums);
 }
+
+/** cos φ standar desain instalasi, dipakai kalau panel tidak punya nilai sendiri. */
+export const DEFAULT_POWER_FACTOR = 0.8;
+
+/**
+ * cos φ yang dipakai buat hitung TOTAL VA & CONNECTED AMPERE.
+ *
+ * Revit banyak mengirim cos φ = 1 (True Load = Apparent Load, karena family-nya
+ * tidak mengisi power factor). cos φ = 1 bukan asumsi desain yang valid — VA
+ * jadi sama persis dengan watt — jadi nilai itu diperlakukan sebagai "tidak ada
+ * data" dan diganti 0.8. Nilai power factor yang benar-benar terisi dari Revit
+ * (0 < cos φ < 1) tetap dipakai apa adanya.
+ */
+export function panelPowerFactor(panel: Panel): number {
+  const pf = Number(panel.power_factor);
+  return Number.isFinite(pf) && pf > 0 && pf < 1 ? pf : DEFAULT_POWER_FACTOR;
+}

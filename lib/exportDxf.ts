@@ -1,7 +1,7 @@
 import { DxfBuilder, type Pt } from "./dxf";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
-import { is3Phase, panelVoltage } from "./panelCalc";
+import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
 import { makeT, type Lang } from "./i18n";
 
 interface FixtureCol {
@@ -326,7 +326,7 @@ export function exportPanelToDxf(
   dxf.line([BUS_X, busTop], [BUS_X, bodyBottom]);
 
   // ---- baris ringkasan
-  const pf = Number(panel.power_factor ?? 0.8) || 0.8;
+  const pf = panelPowerFactor(panel);
   const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
   const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
   const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
