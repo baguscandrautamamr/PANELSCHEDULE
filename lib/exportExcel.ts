@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
-import { is3Phase, panelVoltage } from "./panelCalc";
+import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
 import { makeT, type Lang } from "./i18n";
 
 interface FixtureCol {
@@ -249,7 +249,7 @@ export async function exportPanelToExcel(
   if (line3) titleRow(line3);
   if (panel.incoming_cable) titleRow(panel.incoming_cable);
 
-  const pf = Number(panel.power_factor ?? 0.8) || 0.8;
+  const pf = panelPowerFactor(panel);
   const is3ph = is3Phase(panel);
   const volt = panelVoltage(panel);
   titleRow(
