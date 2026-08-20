@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
+import { COLUMN_WIDTH, pxToExcelWidth, type ColumnWidth } from "./panelColumns";
 import { makeT, type Lang } from "./i18n";
 
 interface FixtureCol {
@@ -37,7 +38,18 @@ const INPUT_FILL: ExcelJS.Fill = {
 };
 
 /** Lebar kolom Excel (satuan ~jumlah karakter) dari isi terpanjang. */
-function autoWidth(values: (string | null | undefined)[], min: number, max: number) {
+/** Perkiraan teks angka seperti tampilan Excel dengan format ribuan + 1 desimal. */
+const numberText = (v: number) =>
+  new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v);
+
+/**
+ * Lebar kolom Excel = lebar kolom yang sama di website (lib/panelColumns),
+ * melebar seperlunya kalau isinya panjang sampai batas kolom itu. Kolom yang
+ * lebarnya tetap (FIXTURE) tidak ikut melebar — judulnya yang turun baris.
+ */
+function colWidth(w: ColumnWidth, values: (string | null | undefined)[] = []) {
+  const min = pxToExcelWidth(w.px);
+  const max = pxToExcelWidth(w.maxPx);
   const longest = values.reduce((m, v) => Math.max(m, (v ?? "").length), 0);
   return Math.min(max, Math.max(min, longest + 2));
 }
@@ -194,26 +206,43 @@ export async function exportPanelToExcel(
   }
   const derivedCount = wattIsDerived.filter(Boolean).length;
 
-  const wFunc = autoWidth(
-    [...circuits.map((c) => c.function_name), "FUNCTION"],
-    18,
-    46
-  );
-  const wCable = autoWidth(
-    [...circuits.map((c) => c.outgoing_cable), "CABLE"],
-    12,
-    28
-  );
-  const wRemarks = autoWidth([...circuits.map((c) => c.remarks), "REMARKS"], 10, 28);
+  const wFunc = colWidth(COLUMN_WIDTH.function, [
+    ...circuits.map((c) => c.function_name),
+    "FUNCTION",
+  ]);
+  const wCable = colWidth(COLUMN_WIDTH.cable, [
+    ...circuits.map((c) => c.outgoing_cable),
+    "CABLE",
+  ]);
+  const wRemarks = colWidth(COLUMN_WIDTH.remarks, [
+    ...circuits.map((c) => c.remarks),
+    "REMARKS",
+  ]);
+  const wFix = colWidth(COLUMN_WIDTH.fixture);
 
-  ws.getColumn(C_NO).width = 6;
+  ws.getColumn(C_NO).width = colWidth(COLUMN_WIDTH.no);
   ws.getColumn(C_FUNC).width = wFunc;
-  ws.getColumn(C_BRK).width = autoWidth([...circuits.map(breakerText), "BREAKER"], 12, 22);
+  ws.getColumn(C_BRK).width = colWidth(COLUMN_WIDTH.breaker, [
+    ...circuits.map(breakerText),
+    "BREAKER",
+  ]);
   ws.getColumn(C_CABLE).width = wCable;
-  const wFix = 13;
   for (let i = 0; i < nFix; i++) ws.getColumn(C_FIX0 + i).width = wFix;
-  for (let i = 0; i < 3; i++) ws.getColumn(C_R + i).width = 12;
+  // kolom R/S/T: pastikan muat angka terbesar yang muncul di baris ringkasan
+  // (TOTAL VA) dengan format ribuan + 1 desimal
+  const sumWatt = circuits.reduce(
+    (s, c) => s + Number(c.phase_r || 0) + Number(c.phase_s || 0) + Number(c.phase_t || 0),
+    0
+  );
+  const wPhase = colWidth(COLUMN_WIDTH.phase, [
+    numberText(sumWatt / panelPowerFactor(panel)),
+  ]);
+  for (let i = 0; i < 3; i++) ws.getColumn(C_R + i).width = wPhase;
   ws.getColumn(C_REMARKS).width = wRemarks;
+  // ExcelJS tidak ikut menulis lebar kolom yang nilainya persis 9 (dianggap
+  // default-nya sendiri), sedangkan default Excel 8.43 — jadi default sheet-nya
+  // di-set 9 supaya kolom seperti itu tetap selebar yang dihitung di sini.
+  ws.properties.defaultColWidth = 9;
 
   // ---------------------------------------------------------------- judul
   let r = 0;
