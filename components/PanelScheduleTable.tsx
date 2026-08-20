@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Circuit, Panel } from "@/lib/types";
 import { fixtureKey } from "@/lib/types";
 import { sortFixtureColumns } from "@/lib/fixtureOrder";
+import { COLUMN_WIDTH, type ColumnWidth } from "@/lib/panelColumns";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
@@ -41,6 +42,16 @@ function buildFixtureColumns(circuits: Circuit[]): FixtureCol[] {
   }
   return sortFixtureColumns([...map.values()], circuits);
 }
+
+/**
+ * Lebar kolom dari lib/panelColumns — dipakai juga oleh export Excel & DXF,
+ * jadi lebar kolom di web, spreadsheet, dan gambar CAD sama.
+ */
+const colStyle = (w: ColumnWidth) => ({
+  width: w.px,
+  minWidth: w.px,
+  maxWidth: w.maxPx,
+});
 
 /** Input kecil buat inline edit — commit saat blur / Enter */
 function CellInput({
@@ -690,19 +701,31 @@ export default function PanelScheduleTable({
             </th>
           </tr>
           <tr className="bg-neutral-100">
-            <th rowSpan={3} className="w-10 px-0 py-1 align-middle text-[9px] font-normal text-neutral-400">
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.sld)}
+              className="px-0 py-1 align-middle text-[9px] font-normal text-neutral-400"
+            >
               SLD
             </th>
-            <th rowSpan={3} className="px-2 py-1 align-middle">
+            <th rowSpan={3} style={colStyle(COLUMN_WIDTH.no)} className="px-2 py-1 align-middle">
               NO.
             </th>
-            <th rowSpan={3} className="min-w-52 px-2 py-1 text-left align-middle">
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.function)}
+              className="px-2 py-1 text-left align-middle"
+            >
               FUNCTION
             </th>
-            <th rowSpan={3} className="min-w-24 px-2 py-1 align-middle">
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.breaker)}
+              className="px-2 py-1 align-middle"
+            >
               BREAKER
             </th>
-            <th rowSpan={3} className="min-w-28 px-2 py-1 align-middle">
+            <th rowSpan={3} style={colStyle(COLUMN_WIDTH.cable)} className="px-2 py-1 align-middle">
               CABLE
             </th>
             {cols.length > 0 && (
@@ -713,7 +736,11 @@ export default function PanelScheduleTable({
             <th colSpan={3} className="px-2 py-1">
               DEMAND LOAD (WATT)
             </th>
-            <th rowSpan={3} className="min-w-16 px-2 py-1 align-middle">
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.remarks)}
+              className="px-2 py-1 align-middle"
+            >
               REMARKS
             </th>
           </tr>
@@ -722,7 +749,8 @@ export default function PanelScheduleTable({
               <th
                 key={col.key}
                 rowSpan={2}
-                className="w-28 min-w-16 max-w-44 overflow-hidden px-1 py-1 align-bottom"
+                style={colStyle(COLUMN_WIDTH.fixture)}
+                className="overflow-hidden px-1 py-1 align-bottom"
               >
                 {/* overflow-wrap:anywhere — nama family panjang (satu kata)
                     boleh dipotong supaya kolom bisa menyempit di layar kecil,
@@ -735,9 +763,11 @@ export default function PanelScheduleTable({
                 </div>
               </th>
             ))}
-            <th className="w-16 min-w-12 px-1.5 py-1">R</th>
-            <th className="w-16 min-w-12 px-1.5 py-1">S</th>
-            <th className="w-16 min-w-12 px-1.5 py-1">T</th>
+            {(["R", "S", "T"] as const).map((label) => (
+              <th key={label} style={colStyle(COLUMN_WIDTH.phase)} className="px-1.5 py-1">
+                {label}
+              </th>
+            ))}
           </tr>
           <tr className="bg-neutral-100">
             <th className="px-2 py-0.5 text-[10px] font-normal">WATT</th>
@@ -752,7 +782,7 @@ export default function PanelScheduleTable({
               .join(" ");
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
-                <td className="relative w-10 p-0">
+                <td className="relative p-0">
                   <MiniCircuitBranch breakerType={c.breaker_type} dim={c.is_spare} />
                 </td>
                 <td className="px-1 py-0.5 text-center">

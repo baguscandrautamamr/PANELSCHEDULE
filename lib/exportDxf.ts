@@ -3,6 +3,7 @@ import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
 import { makeT, type Lang } from "./i18n";
+import { COLUMN_WIDTH, pxToMm, type ColumnWidth } from "./panelColumns";
 
 interface FixtureCol {
   key: string;
@@ -188,23 +189,27 @@ interface DxfCol {
   align: "left" | "center" | "right";
 }
 
+/** Lebar kolom website (px) -> milimeter gambar. */
+const mm = (w: ColumnWidth) => ({ base: pxToMm(w.px), max: pxToMm(w.maxPx) });
+
 function buildColumns(cols: FixtureCol[]): DxfCol[] {
   return [
+    // kolom SLD isinya simbol breaker, bukan teks — lebarnya ditentukan ukuran
+    // block-nya, bukan lebar kolom SLD di website
     { title: ["SLD"], base: COL_SLD, max: COL_SLD, align: "center" },
-    { title: ["NO."], base: 12, max: 20, align: "center" },
-    { title: ["FUNCTION"], base: 58, max: 110, align: "left" },
-    { title: ["BREAKER"], base: 30, max: 50, align: "center" },
-    { title: ["CABLE"], base: 42, max: 72, align: "left" },
+    { title: ["NO."], ...mm(COLUMN_WIDTH.no), align: "center" },
+    { title: ["FUNCTION"], ...mm(COLUMN_WIDTH.function), align: "left" },
+    { title: ["BREAKER"], ...mm(COLUMN_WIDTH.breaker), align: "center" },
+    { title: ["CABLE"], ...mm(COLUMN_WIDTH.cable), align: "left" },
     ...cols.map<DxfCol>((c) => ({
       title: [c.type, c.label ?? ""].filter(Boolean),
-      base: 24,
-      max: 48,
+      ...mm(COLUMN_WIDTH.fixture),
       align: "center",
     })),
-    { title: ["R", "(WATT)"], base: 20, max: 32, align: "right" },
-    { title: ["S", "(WATT)"], base: 20, max: 32, align: "right" },
-    { title: ["T", "(WATT)"], base: 20, max: 32, align: "right" },
-    { title: ["REMARKS"], base: 38, max: 72, align: "left" },
+    { title: ["R", "(WATT)"], ...mm(COLUMN_WIDTH.phase), align: "right" },
+    { title: ["S", "(WATT)"], ...mm(COLUMN_WIDTH.phase), align: "right" },
+    { title: ["T", "(WATT)"], ...mm(COLUMN_WIDTH.phase), align: "right" },
+    { title: ["REMARKS"], ...mm(COLUMN_WIDTH.remarks), align: "left" },
   ];
 }
 
@@ -308,9 +313,10 @@ export function exportPanelToDxf(
     return cells;
   });
 
-  // ---- geometri kolom: lebar mengikuti teks terpanjang (judul + isi), dibatasi
-  // lebar maksimum per kolom. Teks yang masih lebih panjang dari lebar akhir
-  // dipecah jadi beberapa baris di dalam selnya, jadi tidak ada yang terpotong.
+  // ---- geometri kolom: lebar dasar = lebar kolom di website (lib/panelColumns),
+  // melebar seperlunya kalau isinya panjang sampai batas maksimum kolom itu.
+  // Teks yang masih lebih panjang dipecah jadi beberapa baris di dalam selnya,
+  // jadi tidak ada yang terpotong dan kolom tidak melebar sendiri.
   const widths = tableCols.map((c, i) => {
     let need = c.base;
     for (const line of c.title) need = Math.max(need, widthFor(line, TXT_HEAD));
