@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Circuit, Panel } from "@/lib/types";
 import { fixtureKey } from "@/lib/types";
+import { sortFixtureColumns } from "@/lib/fixtureOrder";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
@@ -38,9 +39,7 @@ function buildFixtureColumns(circuits: Circuit[]): FixtureCol[] {
       }
     }
   }
-  return [...map.values()].sort((a, b) =>
-    `${a.type} ${a.label}`.localeCompare(`${b.type} ${b.label}`)
-  );
+  return sortFixtureColumns([...map.values()], circuits);
 }
 
 /** Input kecil buat inline edit — commit saat blur / Enter */

@@ -54,10 +54,58 @@ const ROW_SYM_SCALE = 0.7;
 const SLD_MAIN_Y = 26;
 const CONTENT_LEFT = -95;
 
-/** Potong teks supaya muat di lebar kolom. */
-function fit(value: string, width: number, height: number): string {
+/** Jarak antar baris teks di dalam satu sel. */
+const LINE_H = 3.2;
+const LINE_H_HEAD = 3.4;
+
+/** Perkiraan lebar teks (mm) pada tinggi huruf tertentu. */
+const textWidth = (value: string, height: number) => value.length * height * CHAR_W;
+
+/** Lebar kolom (mm) yang dibutuhkan supaya teks muat utuh + padding kiri-kanan. */
+const widthFor = (value: string, height: number) => textWidth(value, height) + 2 * PAD;
+
+/**
+ * Pecah teks jadi beberapa baris supaya muat di lebar kolom. Tidak ada
+ * karakter yang dibuang — kolom yang sudah mentok lebar maksimum tetap
+ * menampilkan nama lengkap, cuma turun baris. Titik potong diutamakan di
+ * spasi, lalu di pemisah nama family Revit (_ - / .), baru dipotong paksa.
+ */
+function wrapText(value: string, width: number, height: number): string[] {
   const max = Math.max(1, Math.floor((width - 2 * PAD) / (height * CHAR_W)));
-  return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 2))}..`;
+  const lines: string[] = [];
+  let cur = "";
+
+  const flush = () => {
+    if (cur) lines.push(cur);
+    cur = "";
+  };
+
+  for (const word of value.split(/\s+/).filter(Boolean)) {
+    const joined = cur ? `${cur} ${word}` : word;
+    if (joined.length <= max) {
+      cur = joined;
+      continue;
+    }
+    flush();
+    // kata tunggal yang lebih panjang dari kolom (mis. "ACT_E_EMERGENCY_LIGHT")
+    let rest = word;
+    while (rest.length > max) {
+      const head = rest.slice(0, max);
+      const sep = Math.max(
+        head.lastIndexOf("_"),
+        head.lastIndexOf("-"),
+        head.lastIndexOf("/"),
+        head.lastIndexOf(".")
+      );
+      const cut = sep >= Math.floor(max / 2) ? sep + 1 : max;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    cur = rest;
+  }
+  flush();
+
+  return lines.length > 0 ? lines : [""];
 }
 
 // ---------------------------------------------------------------- breaker block
@@ -133,26 +181,30 @@ function arrowOut(dxf: DxfBuilder, at: Pt) {
 // ---------------------------------------------------------------- kolom tabel
 interface DxfCol {
   title: string[];
-  width: number;
+  /** lebar minimum kolom (mm) — dipakai kalau isinya pendek */
+  base: number;
+  /** lebar maksimum kolom (mm); teks yang masih lebih panjang dipecah jadi beberapa baris */
+  max: number;
   align: "left" | "center" | "right";
 }
 
 function buildColumns(cols: FixtureCol[]): DxfCol[] {
   return [
-    { title: ["SLD"], width: COL_SLD, align: "center" },
-    { title: ["NO."], width: 12, align: "center" },
-    { title: ["FUNCTION"], width: 58, align: "left" },
-    { title: ["BREAKER"], width: 30, align: "center" },
-    { title: ["CABLE"], width: 42, align: "left" },
+    { title: ["SLD"], base: COL_SLD, max: COL_SLD, align: "center" },
+    { title: ["NO."], base: 12, max: 20, align: "center" },
+    { title: ["FUNCTION"], base: 58, max: 110, align: "left" },
+    { title: ["BREAKER"], base: 30, max: 50, align: "center" },
+    { title: ["CABLE"], base: 42, max: 72, align: "left" },
     ...cols.map<DxfCol>((c) => ({
       title: [c.type, c.label ?? ""].filter(Boolean),
-      width: 24,
+      base: 24,
+      max: 48,
       align: "center",
     })),
-    { title: ["R", "(WATT)"], width: 20, align: "right" },
-    { title: ["S", "(WATT)"], width: 20, align: "right" },
-    { title: ["T", "(WATT)"], width: 20, align: "right" },
-    { title: ["REMARKS"], width: 38, align: "left" },
+    { title: ["R", "(WATT)"], base: 20, max: 32, align: "right" },
+    { title: ["S", "(WATT)"], base: 20, max: 32, align: "right" },
+    { title: ["T", "(WATT)"], base: 20, max: 32, align: "right" },
+    { title: ["REMARKS"], base: 38, max: 72, align: "left" },
   ];
 }
 
@@ -190,30 +242,126 @@ export function exportPanelToDxf(
   defineFixedBlocks(dxf);
   for (const s of styles.values()) defineBreakerBlock(dxf, s);
 
-  // ---- geometri kolom
+  // ---- isi tabel dihitung dulu supaya lebar kolom bisa menyesuaikan teks
   const tableCols = buildColumns(cols);
+  const idxR = FIXTURE_COL0 + cols.length; // indeks kolom R
+
+  const qtyOf = (c: Circuit, key: string) =>
+    (c.circuit_fixtures ?? [])
+      .filter((f) => fixtureKey(f) === key)
+      .reduce((s, f) => s + f.quantity, 0);
+
+  /** Isi tiap baris circuit per kolom (indeks kolom = indeks tableCols). */
+  const bodyRows: string[][] = circuits.map((c) => {
+    const cells = tableCols.map(() => "");
+    cells[1] = String(c.circuit_no);
+    cells[2] = c.function_name;
+    cells[3] = [c.breaker_type, c.breaker_rating].filter(Boolean).join(" ");
+    cells[4] = c.outgoing_cable ?? "";
+    cols.forEach((col, i) => {
+      const q = qtyOf(c, col.key);
+      if (q) cells[FIXTURE_COL0 + i] = String(q);
+    });
+    cells[idxR] = c.phase_r ? nf.format(round1(Number(c.phase_r))) : "";
+    cells[idxR + 1] = c.phase_s ? nf.format(round1(Number(c.phase_s))) : "";
+    cells[idxR + 2] = c.phase_t ? nf.format(round1(Number(c.phase_t))) : "";
+    cells[idxR + 3] = c.remarks ?? "";
+    return cells;
+  });
+
+  // ---- angka ringkasan
+  const pf = panelPowerFactor(panel);
+  const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
+  const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
+  const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
+  const totalWatt = subR + subS + subT;
+  const totalVA = totalWatt / pf;
+  const is3ph = is3Phase(panel);
+  const volt = panelVoltage(panel);
+  const ampere = is3ph ? totalVA / (Math.sqrt(3) * volt) : totalVA / volt;
+
+  interface SummaryRow {
+    label: string;
+    values: number[];
+    /** isi kolom fixture (khusus baris TOTAL qty) */
+    qty?: boolean;
+  }
+  const summaries: SummaryRow[] = [
+    { label: "TOTAL", values: [], qty: true },
+    { label: "SUB TOTAL", values: [round1(subR), round1(subS), round1(subT)] },
+    { label: "TOTAL WATT", values: [round1(totalWatt)] },
+    { label: "TOTAL VA", values: [round1(totalVA)] },
+    { label: "CONNECTED AMPERE", values: [round1(ampere)] },
+  ];
+
+  const summaryRows: string[][] = summaries.map((s) => {
+    const cells = tableCols.map(() => "");
+    if (s.qty) {
+      cols.forEach((col, k) => {
+        const total = circuits.reduce((acc, c) => acc + qtyOf(c, col.key), 0);
+        if (total) cells[FIXTURE_COL0 + k] = String(total);
+      });
+    }
+    s.values.forEach((v, k) => {
+      cells[idxR + k] = nf.format(v);
+    });
+    return cells;
+  });
+
+  // ---- geometri kolom: lebar mengikuti teks terpanjang (judul + isi), dibatasi
+  // lebar maksimum per kolom. Teks yang masih lebih panjang dari lebar akhir
+  // dipecah jadi beberapa baris di dalam selnya, jadi tidak ada yang terpotong.
+  const widths = tableCols.map((c, i) => {
+    let need = c.base;
+    for (const line of c.title) need = Math.max(need, widthFor(line, TXT_HEAD));
+    for (const row of bodyRows) need = Math.max(need, widthFor(row[i], TXT));
+    for (const row of summaryRows) need = Math.max(need, widthFor(row[i], TXT_HEAD));
+    return Math.min(c.max, Math.ceil(need));
+  });
+
   const colX: number[] = [];
   let x = 0;
-  for (const c of tableCols) {
+  for (const w of widths) {
     colX.push(x);
-    x += c.width;
+    x += w;
   }
   const tableWidth = x;
-  const idxR = FIXTURE_COL0 + cols.length; // indeks kolom R
+
+  // ---- pemecahan baris + tinggi baris/header yang menampung baris terbanyak
+  const headLines = tableCols.map((c, i) =>
+    c.title.flatMap((line) => wrapText(line, widths[i], TXT_HEAD))
+  );
+  const bodyLines = bodyRows.map((row) =>
+    row.map((v, i) => (v ? wrapText(v, widths[i], TXT) : []))
+  );
+  const summaryLines = summaryRows.map((row) =>
+    row.map((v, i) => (v ? wrapText(v, widths[i], TXT_HEAD) : []))
+  );
+  const maxLines = (rows: string[][][]) =>
+    rows.reduce((m, row) => Math.max(m, ...row.map((l) => l.length)), 1);
+
+  const headH = Math.max(HEAD_H, maxLines([headLines]) * LINE_H_HEAD + 3.6);
+  const rowH = Math.max(
+    ROW_H,
+    Math.max(maxLines(bodyLines) * LINE_H, maxLines(summaryLines) * LINE_H_HEAD) + 2
+  );
 
   /** X untuk teks di dalam sel sesuai perataan kolom. */
   const textX = (i: number) => {
     const c = tableCols[i];
     if (c.align === "left") return colX[i] + PAD;
-    if (c.align === "right") return colX[i] + c.width - PAD;
-    return colX[i] + c.width / 2;
+    if (c.align === "right") return colX[i] + widths[i] - PAD;
+    return colX[i] + widths[i] / 2;
   };
 
-  const cell = (i: number, y: number, value: string, height = TXT) => {
-    if (!value) return;
-    dxf.text(fit(value, tableCols[i].width, height), [textX(i), y], {
-      height,
-      align: tableCols[i].align,
+  /** Tulis isi sel; beberapa baris ditumpuk rata tengah terhadap `mid`. */
+  const cell = (i: number, mid: number, lines: string[], height = TXT) => {
+    const lh = height === TXT ? LINE_H : LINE_H_HEAD;
+    lines.forEach((line, k) => {
+      dxf.text(line, [textX(i), mid + ((lines.length - 1) / 2 - k) * lh], {
+        height,
+        align: tableCols[i].align,
+      });
     });
   };
 
@@ -272,29 +420,25 @@ export function exportPanelToDxf(
 
   // ---- header tabel
   const headTop = 0;
-  const headBottom = headTop - HEAD_H;
+  const headBottom = headTop - headH;
+  const headMid = headBottom + headH / 2;
   dxf.layer(L.text);
-  tableCols.forEach((c, i) => {
-    c.title.forEach((line, k) => {
-      const y = c.title.length === 1 ? headBottom + HEAD_H / 2 : headBottom + HEAD_H - 3.4 - k * 3.4;
-      // judul kolom selalu di tengah, tidak ikut perataan isi selnya
-      dxf.text(fit(line, c.width, TXT_HEAD), [colX[i] + c.width / 2, y], {
-        height: TXT_HEAD,
-        align: "center",
-      });
+  headLines.forEach((lines, i) => {
+    // judul kolom selalu di tengah, tidak ikut perataan isi selnya
+    lines.forEach((line, k) => {
+      dxf.text(
+        line,
+        [colX[i] + widths[i] / 2, headMid + ((lines.length - 1) / 2 - k) * LINE_H_HEAD],
+        { height: TXT_HEAD, align: "center" }
+      );
     });
   });
 
   // ---- baris circuit
-  const qtyOf = (c: Circuit, key: string) =>
-    (c.circuit_fixtures ?? [])
-      .filter((f) => fixtureKey(f) === key)
-      .reduce((s, f) => s + f.quantity, 0);
-
   const bodyTop = headBottom;
   circuits.forEach((c, row) => {
-    const top = bodyTop - row * ROW_H;
-    const mid = top - ROW_H / 2;
+    const top = bodyTop - row * rowH;
+    const mid = top - rowH / 2;
 
     // cabang SLD: bus -> breaker -> panah keluar
     dxf.layer(L.sld);
@@ -305,76 +449,33 @@ export function exportPanelToDxf(
     arrowOut(dxf, [BUS_X + 2 + BRK_W * ROW_SYM_SCALE, mid]);
 
     dxf.layer(L.text);
-    cell(1, mid, String(c.circuit_no));
-    cell(2, mid, c.function_name);
-    cell(3, mid, [c.breaker_type, c.breaker_rating].filter(Boolean).join(" "));
-    cell(4, mid, c.outgoing_cable ?? "");
-    cols.forEach((col, i) => {
-      const q = qtyOf(c, col.key);
-      if (q) cell(FIXTURE_COL0 + i, mid, String(q));
-    });
-    cell(idxR, mid, c.phase_r ? nf.format(round1(Number(c.phase_r))) : "");
-    cell(idxR + 1, mid, c.phase_s ? nf.format(round1(Number(c.phase_s))) : "");
-    cell(idxR + 2, mid, c.phase_t ? nf.format(round1(Number(c.phase_t))) : "");
-    cell(idxR + 3, mid, c.remarks ?? "");
+    bodyLines[row].forEach((lines, i) => cell(i, mid, lines));
   });
 
-  const bodyBottom = bodyTop - circuits.length * ROW_H;
+  const bodyBottom = bodyTop - circuits.length * rowH;
 
   // bus vertikal utuh dari SLD sampai baris terakhir
   dxf.layer(L.sld);
   dxf.line([BUS_X, busTop], [BUS_X, bodyBottom]);
 
   // ---- baris ringkasan
-  const pf = panelPowerFactor(panel);
-  const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
-  const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
-  const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
-  const totalWatt = subR + subS + subT;
-  const totalVA = totalWatt / pf;
-  const is3ph = is3Phase(panel);
-  const volt = panelVoltage(panel);
-  const ampere = is3ph ? totalVA / (Math.sqrt(3) * volt) : totalVA / volt;
-
-  interface SummaryRow {
-    label: string;
-    values: number[];
-    /** isi kolom fixture (khusus baris TOTAL qty) */
-    qty?: boolean;
-  }
-  const summaries: SummaryRow[] = [
-    { label: "TOTAL", values: [], qty: true },
-    { label: "SUB TOTAL", values: [round1(subR), round1(subS), round1(subT)] },
-    { label: "TOTAL WATT", values: [round1(totalWatt)] },
-    { label: "TOTAL VA", values: [round1(totalVA)] },
-    { label: "CONNECTED AMPERE", values: [round1(ampere)] },
-  ];
-
   summaries.forEach((s, i) => {
-    const mid = bodyBottom - i * ROW_H - ROW_H / 2;
+    const mid = bodyBottom - i * rowH - rowH / 2;
     dxf.layer(L.summary);
     // label diratakan kanan tepat sebelum kolom angka yang diisi baris ini —
     // baris TOTAL mengisi kolom fixture, jadi labelnya mundur ke kolom CABLE
     const labelX = (s.qty ? colX[FIXTURE_COL0] : colX[idxR]) - PAD;
     dxf.text(s.label, [labelX, mid], { height: TXT_HEAD, align: "right" });
-    if (s.qty) {
-      cols.forEach((col, k) => {
-        const total = circuits.reduce((acc, c) => acc + qtyOf(c, col.key), 0);
-        if (total) cell(FIXTURE_COL0 + k, mid, String(total), TXT_HEAD);
-      });
-    }
-    s.values.forEach((v, k) => {
-      dxf.text(nf.format(v), [textX(idxR + k), mid], { height: TXT_HEAD, align: "right" });
-    });
+    summaryLines[i].forEach((lines, k) => cell(k, mid, lines, TXT_HEAD));
   });
 
-  const tableBottom = bodyBottom - summaries.length * ROW_H;
+  const tableBottom = bodyBottom - summaries.length * rowH;
 
   // ---- grid tabel
   dxf.layer(L.grid);
   const rowLines = 1 + circuits.length + summaries.length; // header + body + summary
   for (let i = 0; i <= rowLines; i++) {
-    const y = i === 0 ? headTop : headBottom - (i - 1) * ROW_H;
+    const y = i === 0 ? headTop : headBottom - (i - 1) * rowH;
     dxf.line([0, y], [tableWidth, y]);
   }
   for (let i = 0; i <= tableCols.length; i++) {
