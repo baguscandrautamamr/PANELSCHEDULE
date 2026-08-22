@@ -1,4 +1,5 @@
 using Autodesk.Revit.Attributes;
+using Autodesk.Revit.DB;   // ElementSet di signature IExternalCommand.Execute
 using Autodesk.Revit.UI;
 
 namespace PanelScheduleSync;
