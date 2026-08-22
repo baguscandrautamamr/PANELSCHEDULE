@@ -18,16 +18,28 @@
 .PARAMETER Install
     Copy hasil build ke %AppData%\Autodesk\Revit\Addins\<versi>\.
     Revit harus ditutup dulu — DLL yang sedang dipakai tidak bisa ditimpa.
+    Jangan dipakai kalau build-nya di PC yang tidak ada Revit-nya — pakai
+    -OutDir lalu pindahkan foldernya ke PC yang ada Revit.
+
+.PARAMETER OutDir
+    Folder tujuan tambahan untuk paket hasil build (mis. folder yang mau
+    dipindah ke PC lain). Dibuat kalau belum ada.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File revit-addin\build-local.ps1 -RevitVersion 2023 -Install
+
+.EXAMPLE
+    # build di PC tanpa Revit, hasilnya ditaruh di folder lain untuk dipindah
+    powershell -ExecutionPolicy Bypass -File revit-addin\build-local.ps1 -RevitVersion 2025 -OutDir "C:\Users\Saya\panel schedule"
 #>
 [CmdletBinding()]
 param(
     [ValidateSet('2023', '2025', 'all')]
     [string]$RevitVersion = 'all',
 
-    [switch]$Install
+    [switch]$Install,
+
+    [string]$OutDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,6 +86,14 @@ foreach ($v in $versions) {
         Copy-Item (Join-Path $dllDir '*.dll') (Join-Path $target 'PanelScheduleSync') -Force
         Copy-Item $manifest $target -Force
         Write-Host "   terpasang: $target" -ForegroundColor Green
+    }
+
+    if ($OutDir) {
+        $copyTo = Join-Path $OutDir "PanelScheduleSync-Revit$v"
+        if (Test-Path $copyTo) { Remove-Item $copyTo -Recurse -Force }
+        New-Item -ItemType Directory -Path $copyTo -Force | Out-Null
+        Copy-Item (Join-Path $pkgDir '*') $copyTo -Recurse -Force
+        Write-Host "   disalin ke: $copyTo" -ForegroundColor Green
     }
 }
 
