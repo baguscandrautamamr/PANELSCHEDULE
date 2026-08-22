@@ -45,6 +45,13 @@ export interface Circuit {
   phase_r: number;
   phase_s: number;
   phase_t: number;
+  /**
+   * Fase yang dikunci user lewat "Rebalance Loads" / edit fase di form.
+   * null = ikut pembagian fase dari model Revit. Push berikutnya memindahkan
+   * watt TERBARU dari Revit ke fase ini (dicocokkan lewat revit_circuit_number),
+   * jadi perubahan beban di model tetap masuk tapi posisi R/S/T tidak lompat.
+   */
+  phase_lock: "R" | "S" | "T" | null;
   remarks: string | null;
   is_spare: boolean;
   /** 'revit' = dari push add-in (ditimpa tiap push); 'manual' = input website (dipertahankan) */

@@ -27,9 +27,11 @@ Buka [SQL Editor](https://supabase.com/dashboard/project/ptkhwoabeclqbfemxgnj/sq
 
 1. `supabase/schema.sql` — bikin tabel + RLS + realtime publication
    (aman dijalankan ulang; kalau database sudah ada, **jalankan ulang sekali**
-   untuk menambah kolom `circuits.source` dan `circuits.revit_circuit_number` —
-   wajib buat add-in versi terbaru, kalau belum maka Push/Pull error
-   "column circuits.revit_circuit_number does not exist")
+   untuk menambah kolom `circuits.source`, `circuits.revit_circuit_number`, dan
+   `circuits.phase_lock` — wajib buat add-in versi terbaru, kalau belum maka
+   Push/Pull error "column circuits.revit_circuit_number does not exist" dan
+   tombol Rebalance Loads gagal menyimpan kunci fase; Push sendiri tetap jalan
+   tanpa `phase_lock`, cuma posisi R/S/T kembali mengikuti model)
 2. `supabase/seed.sql` — data contoh panel **P-011.4 LDB PRODUCTION 1st** (opsional tapi disarankan, biar website langsung ada isinya)
 
 ### 2. Vercel
@@ -63,7 +65,8 @@ npm run dev   # http://localhost:3000
     `ACT_E_RECEPTACLE INDUSTRIAL`) tidak ikut di FUNCTION tapi tetap jadi kolom
     FIXTURE tersendiri. Circuit campuran digabung: `LIGHTING + RECEPTACLE (D)/7`.
   - demand load per fase **R/S/T** mengikuti fase asli circuit di Revit
-    (kolom A/B/C panel schedule Revit)
+    (kolom A/B/C panel schedule Revit), kecuali circuit yang fasenya dikunci
+    di website (lihat **Rebalance Loads** di bawah)
   - summary: total qty per fixture, SUB TOTAL R/S/T, TOTAL WATT,
     TOTAL VA (`watt / cos φ`), CONNECTED AMPERE (`VA / (√3 × V L-L)` untuk 3PH;
     voltage `220/380V` dari Revit → yang dipakai V L-L = 380)
@@ -71,6 +74,19 @@ npm run dev   # http://localhost:3000
   main breaker → fuse + lampu R/Y/B → bus → breaker per circuit
   (MCB 1P/3P, MCCB 3P, RCBO 2P/4P dibedakan simbolnya)
 - Update di Supabase langsung muncul di web (Supabase Realtime)
+- **Rebalance Loads + kunci fase** (badge **🔒R/S/T** di kolom NO.): tombol
+  ⇅ Rebalance Loads membagi ulang circuit 1 fase ke R/S/T yang totalnya paling
+  ringan (greedy, dari watt terbesar; circuit 3 fase tidak diubah), lalu
+  **mengunci** fase hasilnya di kolom `circuits.phase_lock`. Push berikutnya
+  dari Revit mencocokkan baris lewat `revit_circuit_number` dan menaruh
+  **watt terbaru dari model** di fase yang dikunci itu — jadi perubahan beban
+  di Revit tetap masuk, tapi posisi R/S/T hasil rebalance tidak lompat lagi.
+  Fase yang dipilih manual lewat form ✎ diperlakukan sama. Kunci dilepas lewat
+  tombol **🔓 Lepas kunci fase**, dan otomatis lepas kalau circuit-nya berubah
+  jadi 2/3 fase, jadi spare, atau nol watt di Revit (bebannya tidak bisa
+  ditumpuk ke satu kolom). Nomor circuit Revit yang kembar dalam satu panel
+  dilewati — tidak ada cara memastikan kunci itu milik baris yang mana.
+  Catatan: **urutan baris** (▲▼) masih web-only dan tetap ditimpa Push.
 - **Load manual** (+ Tambah Load, badge **M** di tabel): tidak ditimpa/dihapus
   saat Push dari Revit — kalau nomornya bentrok dengan circuit Revit baru,
   otomatis digeser ke nomor setelah circuit terakhir (isinya tetap).

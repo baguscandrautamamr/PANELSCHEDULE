@@ -191,16 +191,18 @@ export default function PanelScheduleTable({
       alert(failed("Gagal memindahkan urutan", "Failed to reorder", err.message));
   }
 
-  /// Rebalance web-only: redistribusi circuit 1-fase ke R/S/T yang paling
-  /// ringan (greedy, mirip niat "Rebalance Loads" di Revit). Circuit 3-fase
-  /// (sudah balanced) tidak diubah. Push berikutnya dari Revit akan menimpa
-  /// hasil ini sesuai kondisi model asli.
+  /// Rebalance: redistribusi circuit 1-fase ke R/S/T yang paling ringan
+  /// (greedy, mirip niat "Rebalance Loads" di Revit). Circuit 3-fase
+  /// (sudah balanced) tidak diubah.
+  /// Fase hasilnya ikut disimpan di kolom phase_lock, jadi Push berikutnya
+  /// dari Revit memindahkan watt terbarunya ke fase yang sama — posisi R/S/T
+  /// hasil rebalance tidak balik lagi ke pembagian bawaan model.
   async function rebalanceLoads() {
     if (
       !confirm(
         t(
-          "Hitung ulang pembagian fase R/S/T untuk semua circuit 1-fase di panel ini? Circuit 3-fase tidak berubah.",
-          "Recalculate the R/S/T phase split for every single-phase circuit in this panel? Three-phase circuits stay unchanged."
+          "Hitung ulang pembagian fase R/S/T untuk semua circuit 1-fase di panel ini? Circuit 3-fase tidak berubah. Hasilnya dikunci, jadi Push berikutnya dari Revit tidak mengubah posisi fasenya.",
+          "Recalculate the R/S/T phase split for every single-phase circuit in this panel? Three-phase circuits stay unchanged. The result is locked, so the next Push from Revit keeps these phase positions."
         )
       )
     )
@@ -243,6 +245,7 @@ export default function PanelScheduleTable({
           phase_r: phase === "R" ? item.watt : 0,
           phase_s: phase === "S" ? item.watt : 0,
           phase_t: phase === "T" ? item.watt : 0,
+          phase_lock: phase,
         })
         .eq("id", item.id);
       if (error) {
@@ -250,6 +253,39 @@ export default function PanelScheduleTable({
         return;
       }
     }
+  }
+
+  /// Lepas semua kunci fase di panel ini — pembagian R/S/T kembali mengikuti
+  /// model Revit di Push berikutnya (angka yang tampil sekarang tidak diubah,
+  /// baru ikut model lagi setelah Push).
+  async function clearPhaseLocks() {
+    const locked = circuits.filter((c) => c.phase_lock);
+    if (locked.length === 0) {
+      alert(
+        t(
+          "Belum ada fase yang dikunci di panel ini.",
+          "No phases are locked in this panel yet."
+        )
+      );
+      return;
+    }
+    if (
+      !confirm(
+        t(
+          `Lepas kunci fase pada ${locked.length} circuit? Pembagian R/S/T akan ikut model Revit lagi mulai Push berikutnya.`,
+          `Release the phase lock on ${locked.length} circuits? The R/S/T split follows the Revit model again from the next Push.`
+        )
+      )
+    )
+      return;
+
+    const { error } = await supabase
+      .from("circuits")
+      .update({ phase_lock: null })
+      .eq("panel_id", panel.id)
+      .not("phase_lock", "is", null);
+    if (error)
+      alert(failed("Gagal melepas kunci fase", "Failed to release phase lock", error.message));
   }
 
   /// Rapatkan nomor load manual supaya berurutan tepat setelah circuit Revit
@@ -365,6 +401,8 @@ export default function PanelScheduleTable({
       phase_r: 0,
       phase_s: 0,
       phase_t: 0,
+      // fase 3PH tidak bisa dikunci ke satu kolom — kuncinya dilepas
+      phase_lock: null,
     };
     if (newCircuit.phase === "3PH") {
       const per = Math.round((watt / 3) * 10) / 10;
@@ -373,6 +411,9 @@ export default function PanelScheduleTable({
       patch.phase_t = per;
     } else {
       patch[`phase_${newCircuit.phase.toLowerCase()}`] = watt;
+      // fase yang dipilih di form diperlakukan sama dengan hasil rebalance:
+      // dikunci supaya tidak ditimpa Push berikutnya
+      patch.phase_lock = newCircuit.phase;
     }
 
     if (editingId) {
@@ -443,6 +484,8 @@ export default function PanelScheduleTable({
   const totalQty = (key: string) =>
     circuits.reduce((s, c) => s + qtyOf(c, key), 0);
 
+  const lockedCount = circuits.filter((c) => c.phase_lock).length;
+
   const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
   const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
   const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
@@ -510,10 +553,26 @@ export default function PanelScheduleTable({
             </button>
             <button
               onClick={rebalanceLoads}
+              title={t(
+                "Bagi ulang circuit 1-fase ke R/S/T paling ringan, lalu kunci hasilnya supaya bertahan saat Push dari Revit",
+                "Redistribute single-phase circuits to the lightest R/S/T, then lock the result so it survives a Push from Revit"
+              )}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
             >
               ⇅ Rebalance Loads
             </button>
+            {lockedCount > 0 && (
+              <button
+                onClick={clearPhaseLocks}
+                title={t(
+                  `${lockedCount} circuit fasenya dikunci — klik untuk mengembalikannya mengikuti model Revit`,
+                  `${lockedCount} circuits have a locked phase — click to make them follow the Revit model again`
+                )}
+                className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
+              >
+                {t(`🔓 Lepas kunci fase (${lockedCount})`, `🔓 Unlock phases (${lockedCount})`)}
+              </button>
+            )}
             <button
               onClick={() => (showAdd ? closeForm() : openAddForm())}
               className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
@@ -559,9 +618,13 @@ export default function PanelScheduleTable({
                 "Pull from Website dijalankan (Push sebelum Pull membatalkan hapusnya). " +
                 "Jalankan **Pull from Website** di Revit add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — " +
                 "kalau tidak berubah di Revit, parameternya read-only di family tersebut. " +
-                "Urutan (▲▼) dan hasil **Rebalance Loads** tersimpan di website saja; Push berikutnya dari Revit " +
-                "akan menimpa sesuai kondisi model asli — kecuali load manual (badge **M**) yang selalu " +
-                "dipertahankan; nomornya otomatis bergeser ke bawah kalau bentrok dengan circuit Revit baru.",
+                "Hasil **Rebalance Loads** (dan fase yang dipilih di form ✎) **dikunci** — baris bertanda **🔒** " +
+                "tetap di fase itu waktu Push berikutnya dari Revit; watt-nya tetap ikut model terbaru, cuma " +
+                "posisi R/S/T-nya yang dipertahankan. Pakai **🔓 Lepas kunci fase** kalau mau ikut model lagi " +
+                "(kunci juga otomatis lepas kalau circuit-nya berubah jadi 3 fase di Revit). " +
+                "Urutan baris (▲▼) masih tersimpan di website saja dan akan ditimpa Push. Load manual " +
+                "(badge **M**) selalu dipertahankan; nomornya otomatis bergeser ke bawah kalau bentrok dengan " +
+                "circuit Revit baru.",
               "Click the FUNCTION / BREAKER / CABLE cells for a quick edit, press Enter or click outside to save. " +
                 "Click **✎** in the NO. column for a full edit (including WATT, PHASE, REMARKS) through the form. " +
                 "Use ▲▼ to reorder and **🗑** to delete a row — manual loads are removed right away " +
@@ -569,9 +632,13 @@ export default function PanelScheduleTable({
                 "Pull from Website runs (a Push before that Pull undoes the deletion). " +
                 "Run **Pull from Website** in the Revit add-in to bring FUNCTION/BREAKER/CABLE into the model — " +
                 "if nothing changes in Revit, those parameters are read-only in that family. " +
-                "The order (▲▼) and the **Rebalance Loads** result live on the website only; the next Push from Revit " +
-                "overwrites them with the real model state — except manual loads (badge **M**), which are always " +
-                "kept; their numbers shift down automatically if they clash with a new Revit circuit."
+                "The **Rebalance Loads** result (and the phase picked in the ✎ form) is **locked** — rows marked **🔒** " +
+                "stay on that phase through the next Push from Revit; their watt still follows the latest model, only " +
+                "the R/S/T position is kept. Use **🔓 Unlock phases** to follow the model again (a lock is also " +
+                "dropped automatically when the circuit becomes three-phase in Revit). " +
+                "Row order (▲▼) still lives on the website only and is overwritten by a Push. Manual loads " +
+                "(badge **M**) are always kept; their numbers shift down automatically if they clash with a new " +
+                "Revit circuit."
             )}
           />
         </p>
@@ -819,6 +886,17 @@ export default function PanelScheduleTable({
                     >
                       {c.circuit_no}
                     </span>
+                    {c.phase_lock && (
+                      <span
+                        title={t(
+                          `Fase dikunci di ${c.phase_lock} lewat website — Push berikutnya dari Revit menaruh watt terbarunya di fase ini, bukan di fase bawaan model`,
+                          `Phase locked to ${c.phase_lock} from the website — the next Push from Revit puts the latest watt on this phase instead of the model's own`
+                        )}
+                        className="no-print rounded bg-blue-100 px-1 text-[9px] font-semibold text-blue-700"
+                      >
+                        🔒{c.phase_lock}
+                      </span>
+                    )}
                     {c.source === "manual" && (
                       <span
                         title={t(

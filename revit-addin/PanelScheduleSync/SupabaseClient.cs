@@ -27,6 +27,12 @@ public class SupabaseClient
     private readonly string _url;
     private readonly string _key;
 
+    /// <summary>
+    /// false kalau database masih pakai schema lama tanpa kolom
+    /// <c>circuits.phase_lock</c> — kunci fase dilewati, Push tetap jalan.
+    /// </summary>
+    private bool _phaseLockSupported = true;
+
     public SupabaseClient()
     {
         _url = DefaultUrl;
@@ -146,6 +152,11 @@ public class SupabaseClient
             // ikut terhapus — ambil dulu sebelum replace baris milik Revit
             List<(string Id, int No)> manualRows = await GetManualCircuitsAsync(panelId);
 
+            // fase yang dikunci user di website ("Rebalance Loads" / edit fase) —
+            // juga harus dibaca SEBELUM baris lamanya dihapus
+            Dictionary<string, string> phaseLocks = await GetPhaseLocksAsync(panelId);
+            bool lockSupported = _phaseLockSupported;
+
             // replace hanya baris milik Revit (fixtures ikut via cascade)
             await SendAsync(HttpMethod.Delete, $"circuits?panel_id=eq.{panelId}&source=eq.revit");
 
@@ -153,23 +164,40 @@ public class SupabaseClient
             // geser ke nomor setelah yang terakhir (isi baris tidak berubah)
             int movedManual = await RenumberConflictingManualAsync(panel, manualRows);
 
+            int lockedApplied = 0;
+
             if (panel.Circuits.Count > 0)
             {
-                var circuitRows = panel.Circuits.Select(c => new Dictionary<string, object?>
+                var circuitRows = panel.Circuits.Select(c =>
                 {
-                    ["panel_id"] = panelId,
-                    ["circuit_no"] = c.CircuitNo,
-                    ["revit_circuit_number"] = c.RevitCircuitNumber,
-                    ["function_name"] = c.FunctionName,
-                    ["breaker_type"] = c.BreakerType,
-                    ["breaker_rating"] = c.BreakerRating,
-                    ["outgoing_cable"] = c.OutgoingCable,
-                    ["phase_r"] = c.PhaseR,
-                    ["phase_s"] = c.PhaseS,
-                    ["phase_t"] = c.PhaseT,
-                    ["remarks"] = c.Remarks,
-                    ["is_spare"] = c.IsSpare,
-                    ["source"] = "revit",
+                    // watt-nya tetap yang terbaru dari model — cuma kolom fasenya
+                    // yang dipindah ke fase pilihan user
+                    string? lockPhase = ResolvePhaseLock(c, phaseLocks);
+                    double watt = c.PhaseR + c.PhaseS + c.PhaseT;
+                    if (lockPhase is not null) lockedApplied++;
+
+                    var row = new Dictionary<string, object?>
+                    {
+                        ["panel_id"] = panelId,
+                        ["circuit_no"] = c.CircuitNo,
+                        ["revit_circuit_number"] = c.RevitCircuitNumber,
+                        ["function_name"] = c.FunctionName,
+                        ["breaker_type"] = c.BreakerType,
+                        ["breaker_rating"] = c.BreakerRating,
+                        ["outgoing_cable"] = c.OutgoingCable,
+                        ["phase_r"] = lockPhase is null ? c.PhaseR : (lockPhase == "R" ? watt : 0),
+                        ["phase_s"] = lockPhase is null ? c.PhaseS : (lockPhase == "S" ? watt : 0),
+                        ["phase_t"] = lockPhase is null ? c.PhaseT : (lockPhase == "T" ? watt : 0),
+                        ["remarks"] = c.Remarks,
+                        ["is_spare"] = c.IsSpare,
+                        ["source"] = "revit",
+                    };
+
+                    // kunci ikut ditulis ulang: baris lama sudah dihapus, kalau
+                    // tidak diikutkan kuncinya hilang tiap Push. Dilewati di
+                    // database lama yang belum punya kolomnya (lihat schema.sql).
+                    if (lockSupported) row["phase_lock"] = lockPhase;
+                    return row;
                 }).ToList();
 
                 JsonDocument inserted = await SendAsync(
@@ -198,6 +226,10 @@ public class SupabaseClient
                     await SendAsync(HttpMethod.Post, "circuit_fixtures", fixtureRows);
             }
 
+            string lockInfo = lockedApplied > 0
+                ? L.T($", {lockedApplied} fase terkunci dipertahankan",
+                      $", {lockedApplied} locked phases kept")
+                : "";
             string manualInfo = manualRows.Count > 0
                 ? L.T($" (+{manualRows.Count} load manual dipertahankan",
                       $" (+{manualRows.Count} manual loads kept")
@@ -205,10 +237,68 @@ public class SupabaseClient
                       ? L.T($", {movedManual} digeser nomornya)", $", {movedManual} renumbered)")
                       : ")")
                 : "";
-            summary.AppendLine($"{panel.PanelCode}: {panel.Circuits.Count} circuit{manualInfo}");
+            summary.AppendLine($"{panel.PanelCode}: {panel.Circuits.Count} circuit{lockInfo}{manualInfo}");
         }
 
         return summary.ToString();
+    }
+
+    /// <summary>
+    /// Fase yang dikunci di website, dipetakan revit_circuit_number -> "R"/"S"/"T".
+    /// Nomor circuit yang kembar dalam satu panel dibuang: tidak ada cara memastikan
+    /// kunci itu milik baris yang mana, lebih aman ikut model.
+    /// </summary>
+    private async Task<Dictionary<string, string>> GetPhaseLocksAsync(string panelId)
+    {
+        JsonDocument rows;
+        try
+        {
+            rows = await SendAsync(
+                HttpMethod.Get,
+                $"circuits?panel_id=eq.{panelId}&source=eq.revit&phase_lock=not.is.null&select=revit_circuit_number,phase_lock");
+        }
+        catch (InvalidOperationException e) when (e.Message.Contains("42703"))
+        {
+            // 42703 = undefined_column: database belum dimigrasi (kolom phase_lock
+            // belum ada) — Push tetap jalan, pembagian fase apa adanya dari model.
+            // Error lain (jaringan, auth) sengaja dilempar: kalau kuncinya tidak
+            // terbaca padahal ada, lebih baik Push gagal daripada kunci user hilang.
+            _phaseLockSupported = false;
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var locks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (JsonElement row in rows.RootElement.EnumerateArray())
+        {
+            string? key = row.GetProperty("revit_circuit_number").GetString()?.Trim();
+            string? phase = row.GetProperty("phase_lock").GetString();
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(phase)) continue;
+
+            // Dictionary.TryAdd tidak ada di .NET Framework 4.8 (Revit 2023)
+            if (locks.ContainsKey(key!)) ambiguous.Add(key!);
+            else locks[key!] = phase!;
+        }
+
+        foreach (string key in ambiguous) locks.Remove(key);
+        return locks;
+    }
+
+    /// <summary>
+    /// Fase kunci yang berlaku buat circuit ini, atau null kalau harus ikut model.
+    /// Kunci hanya dipakai untuk circuit 1 fase yang berbeban: circuit yang di Revit
+    /// berubah jadi 2/3 fase (atau jadi spare / nol watt) kuncinya dilepas, karena
+    /// bebannya tidak bisa ditumpuk ke satu kolom.
+    /// </summary>
+    private static string? ResolvePhaseLock(CircuitData c, Dictionary<string, string> locks)
+    {
+        string? key = c.RevitCircuitNumber?.Trim();
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        if (!locks.TryGetValue(key!, out string? phase)) return null;
+
+        int energized = (c.PhaseR > 0 ? 1 : 0) + (c.PhaseS > 0 ? 1 : 0) + (c.PhaseT > 0 ? 1 : 0);
+        return energized == 1 ? phase : null;
     }
 
     /// <summary>Baris circuit yang dibuat manual di website (source = 'manual').</summary>

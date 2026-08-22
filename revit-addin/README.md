@@ -62,6 +62,13 @@ di-copy saat install.
 6. Voltage (`220/380V`) dan cos φ (Σ True Load / Σ Apparent Load) diambil dari
    model, bukan default `400V` / `0.8`, supaya TOTAL VA & AMPERE sama dengan Revit.
 7. Push ke Supabase REST: upsert project + panel, replace circuits + fixtures.
+8. Sebelum baris lama dihapus, Push membaca fase yang dikunci di website
+   (`circuits.phase_lock`, hasil **Rebalance Loads** / edit fase di sana) dan
+   memakainya untuk baris yang dicocokkan lewat Circuit Number Revit. Watt-nya
+   tetap yang terbaru dari model — cuma kolom R/S/T-nya yang mengikuti pilihan
+   user. Kunci diabaikan (dan dibuang) kalau circuit itu di model sudah bukan
+   1 fase berbeban lagi. Jumlah kunci yang dipakai ikut dilaporkan di ringkasan
+   Push.
 
 ## Konfigurasi (opsional)
 
