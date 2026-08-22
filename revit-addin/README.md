@@ -79,11 +79,31 @@ Default sudah menunjuk ke project Supabase yang benar. Untuk override, buat
 { "url": "https://xxxx.supabase.co", "key": "sb_publishable_xxxx" }
 ```
 
-## Build lokal (opsional)
+## Build lokal (kalau GitHub Actions tidak bisa dipakai)
+
+Syarat cuma **.NET SDK 8** ([download](https://dotnet.microsoft.com/download/dotnet/8.0));
+Revit tidak perlu terpasang untuk build — API-nya dari package NuGet
+`Nice3point.Revit.Api`.
+
+Skrip pembungkusnya (build + susun folder paket + opsional langsung install
+ke folder addins Revit), jalankan dari root repo di PowerShell:
+
+```powershell
+# build + langsung pasang untuk Revit 2023 (tutup Revit dulu)
+powershell -ExecutionPolicy Bypass -File revit-addin\build-local.ps1 -RevitVersion 2023 -Install
+
+# cuma build (hasilnya di revit-addin\package-2023 / package-2025)
+powershell -ExecutionPolicy Bypass -File revit-addin\build-local.ps1
+```
+
+Kalau mau manual tanpa skrip:
 
 ```bash
 dotnet build revit-addin/PanelScheduleSync/PanelScheduleSync.csproj -c Release
 ```
+
+DLL hasilnya ada di `revit-addin/PanelScheduleSync/bin/Release/net48` (Revit 2023,
+**semua** DLL harus ikut) atau `bin/Release/net8.0-windows` (Revit 2025).
 
 Tidak butuh Revit terinstall — referensi API pakai package NuGet
 `Nice3point.Revit.Api.*` (2025).

@@ -43,3 +43,6 @@ next-env.d.ts
 # .NET / Revit add-in
 revit-addin/**/bin/
 revit-addin/**/obj/
+
+# paket hasil build-local.ps1
+revit-addin/package-*/
