@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Build add-in Panel Schedule Sync di PC Windows sendiri (tanpa GitHub Actions),
     dan opsional langsung memasangnya ke folder addins Revit.
@@ -9,7 +9,7 @@
     PanelScheduleSync.addin + folder DLL.
 
     Syarat: .NET SDK 8 terpasang (https://dotnet.microsoft.com/download/dotnet/8.0).
-    Revit sendiri TIDAK perlu terpasang untuk build — API-nya diambil dari
+    Revit sendiri TIDAK perlu terpasang untuk build - API-nya diambil dari
     package Nice3point.Revit.Api lewat NuGet.
 
 .PARAMETER RevitVersion
@@ -17,8 +17,8 @@
 
 .PARAMETER Install
     Copy hasil build ke %AppData%\Autodesk\Revit\Addins\<versi>\.
-    Revit harus ditutup dulu — DLL yang sedang dipakai tidak bisa ditimpa.
-    Jangan dipakai kalau build-nya di PC yang tidak ada Revit-nya — pakai
+    Revit harus ditutup dulu - DLL yang sedang dipakai tidak bisa ditimpa.
+    Jangan dipakai kalau build-nya di PC yang tidak ada Revit-nya - pakai
     -OutDir lalu pindahkan foldernya ke PC yang ada Revit.
 
 .PARAMETER OutDir
@@ -65,7 +65,7 @@ foreach ($v in $versions) {
     Write-Host "== Build Revit $v ($tfm)" -ForegroundColor Cyan
 
     dotnet build $project -c Release -f $tfm
-    if ($LASTEXITCODE -ne 0) { throw "Build Revit $v gagal — lihat pesan error di atas." }
+    if ($LASTEXITCODE -ne 0) { throw "Build Revit $v gagal - lihat pesan error di atas." }
 
     $binDir = Join-Path $PSScriptRoot "PanelScheduleSync\bin\Release\$tfm"
     $pkgDir = Join-Path $PSScriptRoot "package-$v"
@@ -74,7 +74,7 @@ foreach ($v in $versions) {
     if (Test-Path $pkgDir) { Remove-Item $pkgDir -Recurse -Force }
     New-Item -ItemType Directory -Path $dllDir -Force | Out-Null
 
-    # build 2023 (net48) ikut membawa System.Text.Json dkk — semua DLL wajib ikut,
+    # build 2023 (net48) ikut membawa System.Text.Json dkk - semua DLL wajib ikut,
     # bukan cuma PanelScheduleSync.dll
     Copy-Item (Join-Path $binDir '*.dll') $dllDir
     Copy-Item $manifest $pkgDir
