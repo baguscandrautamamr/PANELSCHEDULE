@@ -79,6 +79,20 @@ Default sudah menunjuk ke project Supabase yang benar. Untuk override, buat
 { "url": "https://xxxx.supabase.co", "key": "sb_publishable_xxxx" }
 ```
 
+## Build sekali jalan dari GitHub (paling praktis)
+
+`Build-PanelScheduleAddin.ps1` berdiri sendiri: ambil source terbaru dari
+GitHub (lewat `git` kalau ada, kalau tidak lewat ZIP di folder Downloads),
+build, lalu menaruh folder + ZIP siap pasang di Desktop. Tidak perlu repo
+ter-clone lebih dulu, tidak perlu Revit terpasang di PC yang mem-build.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\Build-PanelScheduleAddin.ps1"
+```
+
+Opsi: `-Branch <nama-branch>`, `-RevitVersion 2023|2025|all` (default 2025),
+`-OutDir <folder>`.
+
 ## Build lokal (kalau GitHub Actions tidak bisa dipakai)
 
 Syarat cuma **.NET SDK 8** ([download](https://dotnet.microsoft.com/download/dotnet/8.0));
