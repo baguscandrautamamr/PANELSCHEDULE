@@ -75,18 +75,60 @@ export function fixtureGroup(
 }
 
 /**
+ * Penanda varian di dalam satu family — dicocokkan per kata utuh supaya "EM"
+ * tidak kena di tengah kata lain. "EMERGENC" sengaja prefix biar "EMERGENCY"
+ * dan "EMERGENCIES" ikut kena.
+ */
+const isVariantWord = (w: string) =>
+  w.startsWith("EMERGENC") || w === "DARURAT" || w === "NORMAL" || w === "EM";
+
+const isEmergencyWord = (w: string) => w.startsWith("EMERGENC") || w === "DARURAT" || w === "EM";
+
+/**
+ * Kolom ini varian emergency? "NON EMERGENCY" / "NON-EMERGENCY" dihitung
+ * normal, bukan emergency.
+ */
+function isEmergencyVariant(text: string): boolean {
+  const ws = words(text);
+  return ws.some((w, i) => isEmergencyWord(w) && ws[i - 1] !== "NON");
+}
+
+/**
+ * Nama kolom tanpa penanda varian — dipakai buat mendudukkan varian NORMAL dan
+ * EMERGENCY dari family yang sama bersebelahan, walau penandanya ada di nama
+ * family maupun di type-nya.
+ */
+function variantBase(text: string): string {
+  const ws = words(text);
+  return ws
+    .filter((w, i) => !isVariantWord(w) && !(w === "NON" && ws[i + 1] && isVariantWord(ws[i + 1])))
+    .join(" ");
+}
+
+/**
  * Urutkan kolom fixture: lighting fixture dulu, lalu electrical fixture, lalu
- * sisanya — di dalam tiap kelompok tetap urut abjad. Urutan ini dipakai juga
- * oleh export Excel & DXF, jadi tabel di web dan gambar/spreadsheet sama.
+ * sisanya. Di dalam tiap kelompok urut abjad, tapi varian satu family didudukkan
+ * bersebelahan dengan **NORMAL dulu baru EMERGENCY** — mis. "ACT_E_DOWNLIGHT 12W
+ * / DOWNLIGHT 12WATT NORMAL" sebelum "… / DOWNLIGHT 12WATT EMERGENCY", yang kalau
+ * murni abjad malah kebalik (E sebelum N).
+ *
+ * Urutan ini dipakai juga oleh export Excel & DXF, jadi tabel di web dan
+ * gambar/spreadsheet sama.
  */
 export function sortFixtureColumns<T extends { key: string; type: string; label: string | null }>(
   cols: T[],
   circuits: Circuit[]
 ): T[] {
   const group = new Map(cols.map((c) => [c.key, fixtureGroup(c, circuits)]));
-  return [...cols].sort(
-    (a, b) =>
+  const text = (c: T) => `${c.type} ${c.label ?? ""}`.toUpperCase();
+  return [...cols].sort((a, b) => {
+    const ta = text(a);
+    const tb = text(b);
+    return (
       group.get(a.key)! - group.get(b.key)! ||
-      `${a.type} ${a.label ?? ""}`.localeCompare(`${b.type} ${b.label ?? ""}`)
-  );
+      variantBase(ta).localeCompare(variantBase(tb)) ||
+      Number(isEmergencyVariant(ta)) - Number(isEmergencyVariant(tb)) ||
+      ta.localeCompare(tb)
+    );
+  });
 }

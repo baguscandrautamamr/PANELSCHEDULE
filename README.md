@@ -52,7 +52,13 @@ npm run dev   # http://localhost:3000
 
 - List project & panel (realtime)
 - Halaman panel: **tabel schedule** dengan
-  - kolom fixture **dinamis** dari data (tidak di-hardcode, beda tiap project)
+  - kolom fixture **dinamis** dari data (tidak di-hardcode, beda tiap project).
+    Urutannya: lighting fixture dulu, lalu electrical fixture (receptacle),
+    lalu sisanya; di dalam tiap kelompok urut abjad, **kecuali** varian dari
+    family yang sama didudukkan bersebelahan dengan **NORMAL dulu baru
+    EMERGENCY** (`DOWNLIGHT 12WATT NORMAL` sebelum `DOWNLIGHT 12WATT
+    EMERGENCY`) — kalau murni abjad malah kebalik. Penandanya boleh di nama
+    family maupun di type-nya, dan `NON-EMERGENCY` dihitung normal.
   - kolom **NO.** = nomor urut rapat `1..N`. Nomor slot Revit sering loncat
     (…42, 43, 46, 47, 50, 53…) karena circuit multi-pole memakan beberapa slot
     dan ada slot kosong — di schedule cetak yang dipakai nomor urut. Urutannya
@@ -142,6 +148,21 @@ npm run dev   # http://localhost:3000
 3. ✅ Export Excel (exceljs) + PDF (print browser)
 4. ✅ Export DXF (breaker symbol jadi block)
 5. 🔜 RLS Supabase per user (sekarang masih permisif — lihat `supabase/schema.sql`)
+
+## Catatan: error "JWT issued at future"
+
+Kalau website menampilkan **`JWT issued at future`** (`PGRST303`), itu bukan
+masalah data atau schema: jam server PostgREST Supabase sedang tertinggal dari
+jam server Auth yang menerbitkan token, jadi klaim `iat` token dianggap masih di
+masa depan (toleransi bawaan PostgREST 30 detik). Paling sering kena di query
+pertama sesudah login, karena penolakannya terjadi di ratusan milidetik pertama
+umur token.
+
+Website sekarang mengulang query-nya sendiri dengan jeda bertambah
+(`withClockSkewRetry` di `lib/supabase.ts`), jadi umumnya sembuh sendiri.
+Sengaja **tidak** memanggil `supabase.auth.refreshSession()` — token baru punya
+`iat` yang lebih baru lagi, jadi malah makin jauh di depan jam PostgREST. Kalau
+errornya menetap, itu perlu Supabase Support resync NTP instance-nya.
 
 ## Struktur
 
