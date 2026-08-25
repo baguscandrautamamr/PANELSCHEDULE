@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { isClockSkewError, supabase, withClockSkewRetry } from "@/lib/supabase";
 import { Rich, useI18n } from "@/lib/i18n";
 import type { Panel, Project } from "@/lib/types";
 
@@ -13,18 +13,27 @@ export default function Home() {
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // error terakhir berupa clock skew PGRST303 — petunjuk yang ditampilkan beda
+  const [clockSkew, setClockSkew] = useState(false);
 
   async function load() {
     const [{ data: pr, error: e1 }, { data: pa, error: e2 }] =
-      await Promise.all([
-        supabase.from("projects").select("*").order("name"),
-        supabase.from("panels").select("*").order("panel_code"),
-      ]);
-    if (e1 || e2) setError((e1 ?? e2)!.message);
-    else {
+      await withClockSkewRetry(
+        () =>
+          Promise.all([
+            supabase.from("projects").select("*").order("name"),
+            supabase.from("panels").select("*").order("panel_code"),
+          ]),
+        ([a, b]) => a.error ?? b.error
+      );
+    if (e1 || e2) {
+      setError((e1 ?? e2)!.message);
+      setClockSkew(isClockSkewError(e1 ?? e2));
+    } else {
       setProjects(pr ?? []);
       setPanels(pa ?? []);
       setError(null);
+      setClockSkew(false);
     }
     setLoading(false);
   }
@@ -131,12 +140,28 @@ export default function Home() {
           <p className="mt-1">{error}</p>
           <p className="mt-2">
             <Rich
-              text={t(
-                "Kalau tabel belum ada, jalankan `supabase/schema.sql` (lalu `supabase/seed.sql`) di Supabase SQL Editor.",
-                "If the tables don't exist yet, run `supabase/schema.sql` (then `supabase/seed.sql`) in the Supabase SQL Editor."
-              )}
+              text={
+                clockSkew
+                  ? t(
+                      "Jam server Supabase sedang tidak sinkron, jadi token login dianggap terbit di masa depan (`PGRST303`). Bukan masalah data — coba **muat ulang** halaman beberapa detik lagi.",
+                      "The Supabase server clocks are out of sync, so your login token looks like it was issued in the future (`PGRST303`). Nothing is wrong with your data — **reload** the page in a few seconds."
+                    )
+                  : t(
+                      "Kalau tabel belum ada, jalankan `supabase/schema.sql` (lalu `supabase/seed.sql`) di Supabase SQL Editor.",
+                      "If the tables don't exist yet, run `supabase/schema.sql` (then `supabase/seed.sql`) in the Supabase SQL Editor."
+                    )
+              }
             />
           </p>
+          <button
+            onClick={() => {
+              setLoading(true);
+              load();
+            }}
+            className="mt-3 rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 transition hover:bg-red-100"
+          >
+            {t("Coba lagi", "Try again")}
+          </button>
         </div>
       )}
 

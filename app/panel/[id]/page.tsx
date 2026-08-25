@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, withClockSkewRetry } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 import type { Circuit, Panel } from "@/lib/types";
 import PanelScheduleTable from "@/components/PanelScheduleTable";
@@ -20,16 +20,19 @@ export default function PanelPage() {
   const [live, setLive] = useState(false);
 
   const load = useCallback(async () => {
-    const [{ data: p, error: e1 }, { data: c, error: e2 }] = await Promise.all(
-      [
-        supabase.from("panels").select("*").eq("id", id).single(),
-        supabase
-          .from("circuits")
-          .select("*, circuit_fixtures(*)")
-          .eq("panel_id", id)
-          .order("circuit_no"),
-      ]
-    );
+    const [{ data: p, error: e1 }, { data: c, error: e2 }] =
+      await withClockSkewRetry(
+        () =>
+          Promise.all([
+            supabase.from("panels").select("*").eq("id", id).single(),
+            supabase
+              .from("circuits")
+              .select("*, circuit_fixtures(*)")
+              .eq("panel_id", id)
+              .order("circuit_no"),
+          ]),
+        ([a, b]) => a.error ?? b.error
+      );
     if (e1 || e2) setError((e1 ?? e2)!.message);
     else {
       setPanel(p);
