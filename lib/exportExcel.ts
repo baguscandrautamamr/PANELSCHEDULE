@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
+import { solveFixtureWatts } from "./fixtureWatt";
 import { COLUMN_WIDTH, pxToExcelWidth, type ColumnWidth } from "./panelColumns";
 import { makeT, type Lang } from "./i18n";
 
@@ -146,64 +147,10 @@ export async function exportPanelToExcel(
   const breakerText = (c: Circuit) =>
     [c.breaker_type, c.breaker_rating].filter(Boolean).join(" ");
 
-  const revitTotalOf = (c: Circuit) =>
-    (Number(c.phase_r) || 0) + (Number(c.phase_s) || 0) + (Number(c.phase_t) || 0);
-
-  /**
-   * Watt/unit satu kolom fixture menurut data (kolom watt_per_unit) — hanya
-   * dipakai kalau nilainya konsisten di semua circuit.
-   */
-  const wattFromData = (key: string): number | null => {
-    const seen = new Set<number>();
-    for (const c of circuits) {
-      for (const fx of c.circuit_fixtures ?? []) {
-        if (fixtureKey(fx) === key && fx.watt_per_unit != null) {
-          seen.add(Number(fx.watt_per_unit));
-        }
-      }
-    }
-    return seen.size === 1 ? [...seen][0] : null;
-  };
-
-  /**
-   * Watt/unit yang diturunkan dari data yang ada: pada circuit yang bebannya
-   * hanya berasal dari SATU kolom fixture, watt/unit = demand load Revit / qty.
-   * Dipakai kalau watt_per_unit kosong di database (mis. family Revit tidak
-   * punya parameter "Wattage"), dan hanya kalau semua circuit semacam itu
-   * sepakat pada angka yang sama.
-   */
-  const wattFromLoads = (key: string): number | null => {
-    const candidates: number[] = [];
-    for (const c of circuits) {
-      const total = revitTotalOf(c);
-      if (total <= 0) continue;
-      const used = cols.filter((other) => qtyOf(c, other.key) > 0);
-      if (used.length !== 1 || used[0].key !== key) continue;
-      const qty = qtyOf(c, key);
-      if (qty > 0) candidates.push(total / qty);
-    }
-    if (candidates.length === 0) return null;
-    const min = Math.min(...candidates);
-    const max = Math.max(...candidates);
-    // tidak sepakat -> jangan dipakai, lebih baik kosong daripada salah
-    if (max - min > Math.max(0.5, max * 0.01)) return null;
-    return Math.round(((min + max) / 2) * 10) / 10;
-  };
-
-  const wattByCol: (number | null)[] = [];
-  const wattIsDerived: boolean[] = [];
-  for (const col of cols) {
-    const fromData = wattFromData(col.key);
-    const fromLoads = wattFromLoads(col.key);
-    // angka dari data diutamakan, kecuali terbukti tidak cocok dengan beban
-    // circuit yang cuma memakai kolom ini
-    const trustData =
-      fromData != null &&
-      (fromLoads == null || Math.abs(fromData - fromLoads) <= Math.max(0.5, fromLoads * 0.01));
-    const watt = trustData ? fromData : (fromLoads ?? fromData);
-    wattByCol.push(watt);
-    wattIsDerived.push(watt != null && watt !== fromData);
-  }
+  // Watt/unit tiap kolom FIXTURE: dari parameter Revit kalau ada, kalau tidak
+  // dihitung balik dari demand load circuit (lihat lib/fixtureWatt).
+  const { watt: wattByCol, source: wattSource } = solveFixtureWatts(circuits, cols);
+  const wattIsDerived = wattSource.map((s) => s === "derived");
   const derivedCount = wattIsDerived.filter(Boolean).length;
 
   const wFunc = colWidth(COLUMN_WIDTH.function, [
@@ -411,11 +358,20 @@ export async function exportPanelToExcel(
 
   // ---------------------------------------------------------------- isi
   const bodyTop = r + 1;
+  /** Rentang sel qty FIXTURE satu baris & rentang sel WATT / UNIT-nya. */
+  const qtyRange = (row: number) => `${L(C_FIX0)}${row}:${L(C_R - 1)}${row}`;
+  const wattRange = `${L(C_FIX0)}$${rWattUnit}:${L(C_R - 1)}$${rWattUnit}`;
   /** Total watt circuit = SUM(qty x watt/unit) sepanjang kolom fixture. */
-  const sumProduct = (row: number) =>
-    `SUMPRODUCT(${L(C_FIX0)}${row}:${L(C_R - 1)}${row},${L(C_FIX0)}$${rWattUnit}:${L(C_R - 1)}$${rWattUnit})`;
+  const sumProduct = (row: number) => `SUMPRODUCT(${qtyRange(row)},${wattRange})`;
+  /**
+   * Jumlah kolom yang ada qty-nya tapi WATT / UNIT-nya masih kosong. Selama
+   * masih ada (>0), demand load-nya belum bisa dihitung dari qty x watt.
+   */
+  const blankWatt = (row: number) =>
+    `SUMPRODUCT((${qtyRange(row)}<>"")*(${wattRange}=""))`;
 
   let fallbackRows = 0;
+  let pendingRows = 0;
   for (const c of circuits) {
     r += 1;
     const row = ws.getRow(r);
@@ -427,32 +383,66 @@ export async function exportPanelToExcel(
       row.getCell(C_FIX0 + i).value = qtyOf(c, col.key) || null;
     });
 
-    // Demand load per fase: pakai formula qty x watt/unit HANYA kalau hasilnya
-    // memang sama dengan angka dari Revit. Kalau beda (watt/unit tidak diketahui,
-    // load tidak berasal dari fixture, atau fase tidak seimbang), angka Revit
-    // ditulis apa adanya supaya schedule tidak jadi salah.
     const phases = [Number(c.phase_r) || 0, Number(c.phase_s) || 0, Number(c.phase_t) || 0];
     const revitTotal = phases[0] + phases[1] + phases[2];
-    const derived = cols.reduce(
-      (s, col, i) => s + qtyOf(c, col.key) * (wattByCol[i] ?? 0),
-      0
-    );
-    const energized = phases.filter((v) => v > 0).length;
-    const balanced3 =
-      energized === 3 &&
-      Math.abs(phases[0] - phases[1]) < 0.05 &&
-      Math.abs(phases[1] - phases[2]) < 0.05;
+    const used = cols
+      .map((col, i) => (qtyOf(c, col.key) > 0 ? i : -1))
+      .filter((i) => i >= 0);
+    const allWattKnown = used.length > 0 && used.every((i) => wattByCol[i] != null);
+    const derived = used.reduce((s, i) => s + qtyOf(c, cols[i].key) * (wattByCol[i] ?? 0), 0);
     const matches =
       revitTotal > 0 && Math.abs(derived - revitTotal) <= Math.max(0.5, revitTotal * 0.01);
-    const useFormula = nFix > 0 && matches && (energized === 1 || balanced3);
-    if (revitTotal > 0 && !useFormula) fallbackRows += 1;
+
+    /**
+     * Pembagian hasil qty x watt/unit ke tiap fase. Fase yang berbeban sama rata
+     * (1, 2, atau 3 pole balance) dibagi rata; kalau tidak, dipakai porsi
+     * masing-masing fase seperti di model Revit.
+     */
+    const live = phases.filter((v) => v > 0);
+    const equalShare = live.length > 0 && live.every((v) => Math.abs(v - live[0]) < 0.05);
+    const shareExpr = (value: number) =>
+      equalShare
+        ? live.length === 1
+          ? sumProduct(r)
+          : `${sumProduct(r)}/${live.length}`
+        : `${sumProduct(r)}*${Math.round((value / revitTotal) * 1e6) / 1e6}`;
+
+    /**
+     * Demand load per fase ditulis sebagai:
+     *  - FORMULA murni  : watt/unit semua kolom sudah diketahui DAN hasilnya cocok
+     *                     dengan angka Revit;
+     *  - FORMULA + fallback : masih ada kolom yang WATT / UNIT-nya kosong. Selama
+     *                     kosong yang tampil angka Revit apa adanya, begitu user
+     *                     mengisi watt-nya di baris WATT / UNIT sel ini langsung
+     *                     berubah jadi hasil qty x watt/unit;
+     *  - ANGKA MATI     : watt sudah lengkap tapi hasilnya tidak sama dengan angka
+     *                     Revit (beban tidak berasal dari fixture, dsb) — angka
+     *                     Revit dipertahankan supaya schedule tidak jadi salah.
+     */
+    const mode =
+      nFix === 0 || revitTotal <= 0 || used.length === 0
+        ? "static"
+        : allWattKnown
+          ? matches
+            ? "formula"
+            : "static"
+          : "pending";
+    if (revitTotal > 0 && mode === "static") fallbackRows += 1;
+    if (mode === "pending") pendingRows += 1;
 
     phases.forEach((value, i) => {
-      row.getCell(C_R + i).value = !value
-        ? null
-        : useFormula
-          ? { formula: balanced3 ? `${sumProduct(r)}/3` : sumProduct(r), result: round1(value) }
-          : value;
+      const cell = row.getCell(C_R + i);
+      if (!value) {
+        cell.value = null;
+        return;
+      }
+      const result = round1(value);
+      cell.value =
+        mode === "formula"
+          ? { formula: shareExpr(value), result }
+          : mode === "pending"
+            ? { formula: `IF(${blankWatt(r)}>0,${result},${shareExpr(value)})`, result }
+            : value;
     });
 
     row.getCell(C_REMARKS).value = c.remarks ?? "";
@@ -598,13 +588,22 @@ export async function exportPanelToExcel(
     ...(nFix > 0
       ? [
           t(
-            `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(qty kolom FIXTURE x baris WATT / UNIT di baris ${rWattUnit}), dibagi 3 untuk circuit 3 fase seimbang`,
-            `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(FIXTURE column qty x the WATT / UNIT row at row ${rWattUnit}), divided by 3 for balanced three-phase circuits`
+            `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(qty kolom FIXTURE x baris WATT / UNIT di baris ${rWattUnit}), dibagi rata ke fase yang berbeban (mis. /3 untuk circuit 3 fase seimbang)`,
+            `DEMAND LOAD R/S/T per circuit = SUMPRODUCT(FIXTURE column qty x the WATT / UNIT row at row ${rWattUnit}), split evenly across the energized phases (e.g. /3 for a balanced three-phase circuit)`
           ),
+          pendingRows > 0
+            ? t(
+                `${pendingRows} circuit memakai kolom FIXTURE yang WATT / UNIT-nya masih kosong (sel kuning di baris ${rWattUnit}). Sel demand load-nya sudah berisi formula: selama watt-nya kosong yang tampil angka dari Revit, dan begitu watt-nya diisi angkanya langsung berubah jadi qty x watt/unit — SUB TOTAL, TOTAL WATT, TOTAL VA, dan CONNECTED AMPERE ikut menyesuaikan.`,
+                `${pendingRows} circuits use FIXTURE columns whose WATT / UNIT is still empty (the yellow cells on row ${rWattUnit}). Their demand load cells already hold a formula: while the watt is empty they show the figure from Revit, and the moment you type the watt they switch to qty x watt/unit — SUB TOTAL, TOTAL WATT, TOTAL VA and CONNECTED AMPERE follow.`
+              )
+            : t(
+                "Semua kolom FIXTURE sudah punya angka WATT / UNIT.",
+                "Every FIXTURE column already has a WATT / UNIT figure."
+              ),
           fallbackRows > 0
             ? t(
-                `Catatan: ${fallbackRows} circuit tetap memakai angka demand load dari Revit (bukan formula) karena hasil qty x watt/unit tidak sama dengan nilai Revit — mis. watt/unit tidak diketahui atau bebannya tidak berasal dari fixture.`,
-                `Note: ${fallbackRows} circuits keep the demand load figure from Revit (not a formula) because qty x watt/unit does not match the Revit value — e.g. watt/unit is unknown or the load does not come from fixtures.`
+                `${fallbackRows} circuit tetap memakai angka demand load dari Revit (angka mati, bukan formula) karena bebannya tidak berasal dari fixture di tabel ini — mis. beban langsung dari equipment — jadi qty x watt/unit tidak akan pernah sama dengan nilai Revit.`,
+                `${fallbackRows} circuits keep the demand load figure from Revit (a plain number, not a formula) because their load does not come from the fixtures in this table — e.g. a load straight from equipment — so qty x watt/unit would never match the Revit value.`
               )
             : t(
                 "Semua circuit yang berbeban memakai formula qty x watt/unit.",
@@ -613,8 +612,8 @@ export async function exportPanelToExcel(
           ...(derivedCount > 0
             ? [
                 t(
-                  `Angka WATT / UNIT yang dicetak MIRING (${derivedCount} kolom) tidak ada di data Revit — diturunkan dari demand load / qty pada circuit yang hanya memakai kolom itu. Sebaiknya dicek ulang terhadap spesifikasi fixture.`,
-                  `The ITALIC WATT / UNIT figures (${derivedCount} columns) are not in the Revit data — they are derived from demand load / qty on circuits that use only that column. Please check them against the fixture specification.`
+                  `Angka WATT / UNIT yang dicetak MIRING (${derivedCount} kolom) tidak ada di data Revit — dihitung balik dari demand load / qty circuit yang memakai kolom itu. Sebaiknya dicek ulang terhadap spesifikasi fixture.`,
+                  `The ITALIC WATT / UNIT figures (${derivedCount} columns) are not in the Revit data — they are back-calculated from demand load / qty of the circuits that use those columns. Please check them against the fixture specification.`
                 ),
               ]
             : []),
@@ -640,10 +639,10 @@ export async function exportPanelToExcel(
     t(
       `Sel berwarna kuning (cos phi ${cellRef(C_BRK, rPf)}, tegangan ${cellRef(C_BRK, rVolt)}${
         nFix > 0 ? `, baris WATT / UNIT ${rWattUnit}` : ""
-      }) boleh diubah — angka di bawahnya ikut menyesuaikan.`,
+      }) boleh diisi/diubah — angka di bawahnya ikut menyesuaikan.`,
       `The yellow cells (cos phi ${cellRef(C_BRK, rPf)}, voltage ${cellRef(C_BRK, rVolt)}${
         nFix > 0 ? `, WATT / UNIT row ${rWattUnit}` : ""
-      }) can be edited — everything below follows.`
+      }) can be filled in or edited — everything below follows.`
     ),
   ];
   notes.forEach((text, i) => {

@@ -172,7 +172,7 @@ public class PanelExtractor(Document doc)
         };
 
         if (!isEmpty)
-            circuit.Fixtures = ExtractFixtures(cs);
+            circuit.Fixtures = ExtractFixtures(cs, powerFactor);
 
         // FUNCTION = jenis fixture yang terhubung + nomor circuit Revit apa
         // adanya, mis. "LIGHTING (D)/4" atau "RECEPTACLE (D)/42".
@@ -349,7 +349,7 @@ public class PanelExtractor(Document doc)
     }
 
     /// <summary>Group element di circuit per family + type (= type family Revit).</summary>
-    private List<FixtureData> ExtractFixtures(ElectricalSystem cs)
+    private List<FixtureData> ExtractFixtures(ElectricalSystem cs, double powerFactor)
     {
         var groups = new Dictionary<string, FixtureData>();
 
@@ -366,15 +366,49 @@ public class PanelExtractor(Document doc)
                 {
                     FixtureType = family.ToUpperInvariant(),
                     FixtureLabel = label?.ToUpperInvariant(),
-                    WattPerUnit = ParamDouble(elType, "Wattage", UnitTypeId.Watts),
                 };
                 groups[key] = fx;
             }
 
             fx.Quantity++;
+            // watt bisa saja cuma terisi di sebagian unit (mis. hanya satu
+            // element yang parameternya diisi) — pakai yang pertama ketemu
+            fx.WattPerUnit ??= FixtureWatt(el, elType, powerFactor);
         }
 
         return [.. groups.Values];
+    }
+
+    /// <summary>
+    /// Nama parameter yang lazim dipakai untuk daya satu unit fixture. Dicari
+    /// di type dulu (di situ daya fixture biasanya didefinisikan), baru instance.
+    /// </summary>
+    private static readonly string[] WattParamNames = ["Wattage", "Watt", "Daya", "Power"];
+
+    /// <summary>
+    /// Watt satu unit fixture — jadi baris "WATT / UNIT" di panel schedule.
+    /// Urutan sumber:
+    /// 1. parameter daya di type/instance ("Wattage", "Watt", "Daya", "Power");
+    /// 2. Apparent Load connector listriknya x cos phi panel. Ini angka yang
+    ///    dipakai Revit menyusun beban circuit, jadi qty x watt hasilnya sejalan
+    ///    dengan DEMAND LOAD circuit-nya.
+    /// null kalau dua-duanya tidak ada — biar tetap bisa diisi manual di
+    /// website/Excel (di Excel selnya jadi sel isian, dan begitu diisi demand
+    /// load-nya ikut terhitung lewat formula).
+    /// </summary>
+    private static double? FixtureWatt(Element el, ElementType? elType, double powerFactor)
+    {
+        foreach (string name in WattParamNames)
+        {
+            double? watt = ParamDouble(elType, name, UnitTypeId.Watts)
+                           ?? ParamDouble(el, name, UnitTypeId.Watts);
+            if (watt > 0) return Math.Round(watt.Value, 1);
+        }
+
+        double? va = ParamDouble(el, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes)
+                     ?? ParamDouble(elType, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes);
+
+        return va > 0 ? Math.Round(va.Value * powerFactor, 1) : null;
     }
 
     private static int SafePoles(ElectricalSystem cs)
