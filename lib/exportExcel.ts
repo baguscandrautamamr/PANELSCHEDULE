@@ -1,7 +1,16 @@
 import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
-import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
+import {
+  BREAKER_RATINGS,
+  circuitAmpere,
+  energizedPhases,
+  is3Phase,
+  panelPowerFactor,
+  panelVoltage,
+  panelVoltageLN,
+  suggestBreakerText,
+} from "./panelCalc";
 import { solveFixtureWatts } from "./fixtureWatt";
 import { COLUMN_WIDTH, pxToExcelWidth, type ColumnWidth } from "./panelColumns";
 import { makeT, type Lang } from "./i18n";
@@ -13,6 +22,7 @@ interface FixtureCol {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const THIN: Partial<ExcelJS.Borders> = {
   top: { style: "thin" },
@@ -137,7 +147,9 @@ export async function exportPanelToExcel(
   const C_FIX0 = 5;
   const C_R = C_FIX0 + nFix;
   const C_REMARKS = C_R + 3;
-  const nCols = C_REMARKS;
+  const C_AMP = C_REMARKS + 1;
+  const C_BRK_PICK = C_AMP + 1;
+  const nCols = C_BRK_PICK;
 
   const qtyOf = (c: Circuit, key: string) =>
     (c.circuit_fixtures ?? [])
@@ -186,6 +198,8 @@ export async function exportPanelToExcel(
   ]);
   for (let i = 0; i < 3; i++) ws.getColumn(C_R + i).width = wPhase;
   ws.getColumn(C_REMARKS).width = wRemarks;
+  ws.getColumn(C_AMP).width = colWidth(COLUMN_WIDTH.ampere, ["AMPERE"]);
+  ws.getColumn(C_BRK_PICK).width = colWidth(COLUMN_WIDTH.breakerPick, ["SELECTION"]);
   // ExcelJS tidak ikut menulis lebar kolom yang nilainya persis 9 (dianggap
   // default-nya sendiri), sedangkan default Excel 8.43 — jadi default sheet-nya
   // di-set 9 supaya kolom seperti itu tetap selebar yang dihitung di sini.
@@ -258,6 +272,9 @@ export async function exportPanelToExcel(
 
   const rPf = paramRow("cos phi", pf, "0.00");
   const rVolt = paramRow(`V ${is3ph ? "(L-L)" : "(L-N)"}`, volt, "#,##0");
+  // Panel 3 fase perlu tegangan L-N juga: ampere circuit 1 fase dibagi tegangan
+  // ini, sedangkan circuit 3 fase dibagi cos phi x akar3 x V(L-L) di atas.
+  const rVoltLN = is3ph ? paramRow("V (L-N)", panelVoltageLN(panel), "#,##0") : rVolt;
   r += 1; // baris kosong pemisah
 
   // ---------------------------------------------------------------- header
@@ -274,6 +291,8 @@ export async function exportPanelToExcel(
   put(headTop, C_BRK, "BREAKER");
   put(headTop, C_CABLE, "CABLE");
   put(headTop, C_REMARKS, "REMARKS");
+  put(headTop, C_AMP, "AMPERE");
+  put(headTop, C_BRK_PICK, "BREAKER\nSELECTION");
 
   if (nFix > 0) {
     put(headTop, C_FIX0, "FIXTURE");
@@ -303,7 +322,7 @@ export async function exportPanelToExcel(
 
   // Semua sel di rentang merge ikut di-style di loop atas (bukan cuma sel
   // master), supaya kotak hasil merge punya garis lengkap di keempat sisinya.
-  for (const c of [C_NO, C_FUNC, C_BRK, C_CABLE, C_REMARKS]) {
+  for (const c of [C_NO, C_FUNC, C_BRK, C_CABLE, C_REMARKS, C_AMP, C_BRK_PICK]) {
     ws.mergeCells(headTop, c, headBottom, c);
   }
   if (nFix > 0) ws.mergeCells(headTop, C_FIX0, headTop, C_FIX0 + nFix - 1);
@@ -321,6 +340,22 @@ export async function exportPanelToExcel(
   ws.getRow(headBottom).height = Math.min(160, Math.max(30, (fixLines + 1) * 11 + 4));
 
   const L = (col: number) => ws.getColumn(col).letter;
+  /** Referensi absolut ke sel parameter (cos phi / tegangan) di kolom BREAKER. */
+  const param = (row: number) => `${L(C_BRK)}$${row}`;
+
+  /**
+   * IF bertingkat yang memilih rating breaker standar terkecil yang masih di
+   * ATAS arus di sel `ampRef` — breaker tidak boleh lebih kecil dari bebannya.
+   * Sengaja tidak memakai formula array/LOOKUP supaya jalan di Excel versi apa
+   * pun dan gampang dibaca waktu selnya diklik.
+   */
+  const breakerFormula = (ampRef: string) => {
+    const max = BREAKER_RATINGS[BREAKER_RATINGS.length - 1];
+    const chain = [...BREAKER_RATINGS]
+      .reverse()
+      .reduce((inner, rating) => `IF(${ampRef}<=${rating},"${rating}A",${inner})`, `"> ${max}A"`);
+    return `IF(${ampRef}="","",${chain})`;
+  };
 
   // ------------------------------------------------- baris pengali WATT/UNIT
   // Jadi acuan formula demand load R/S/T di bawah, sekaligus bisa diubah user.
@@ -447,6 +482,27 @@ export async function exportPanelToExcel(
 
     row.getCell(C_REMARKS).value = c.remarks ?? "";
 
+    // AMPERE per circuit — formula, jadi ikut berubah kalau watt/unit, cos phi,
+    // atau tegangan di sel kuning diedit.
+    const amp = circuitAmpere(panel, c);
+    const sumRST = `SUM(${L(C_R)}${r}:${L(C_R + 2)}${r})`;
+    const livePhases = is3ph ? energizedPhases(c) : 1;
+    const ampFormula =
+      livePhases >= 3
+        ? `${sumRST}/(${param(rPf)}*SQRT(3)*${param(rVolt)})`
+        : livePhases === 2
+          ? `${sumRST}/(${param(rPf)}*${param(rVolt)})`
+          : `${sumRST}/${param(rVoltLN)}`;
+    row.getCell(C_AMP).value = amp == null ? null : { formula: ampFormula, result: round2(amp) };
+
+    // BREAKER SELECTION = rating standar terdekat yang masih di atas AMPERE.
+    // Ditulis sebagai IF bertingkat (bukan angka mati) supaya ikut menyesuaikan
+    // waktu ampere-nya berubah.
+    row.getCell(C_BRK_PICK).value =
+      amp == null
+        ? null
+        : { formula: breakerFormula(`${L(C_AMP)}${r}`), result: suggestBreakerText(amp) };
+
     for (let col = 1; col <= nCols; col++) {
       const cell = row.getCell(col);
       cell.border = THIN;
@@ -458,14 +514,15 @@ export async function exportPanelToExcel(
         horizontal:
           col === C_NO || (col >= C_FIX0 && col < C_R)
             ? "center"
-            : col >= C_R && col < C_REMARKS
+            : (col >= C_R && col < C_REMARKS) || col === C_AMP
               ? "right"
-              : col === C_BRK
+              : col === C_BRK || col === C_BRK_PICK
                 ? "center"
                 : "left",
         wrapText: wrap,
       };
       if (col >= C_R && col < C_REMARKS) cell.numFmt = "#,##0.#";
+      if (col === C_AMP) cell.numFmt = "#,##0.00";
       if (col >= C_FIX0 && col < C_R) cell.numFmt = "#,##0";
     }
   }
@@ -637,10 +694,30 @@ export async function exportPanelToExcel(
       } (cell ${cellRef(C_BRK, rVolt)})`
     ),
     t(
+      `AMPERE per circuit = SUM(R,S,T) / ${
+        is3ph
+          ? `V(L-N) sel ${cellRef(C_BRK, rVoltLN)} untuk circuit 1 fase, dan / (cos phi x SQRT(3) x V L-L) untuk circuit 3 fase`
+          : `V(L-N) sel ${cellRef(C_BRK, rVoltLN)}`
+      }`,
+      `AMPERE per circuit = SUM(R,S,T) / ${
+        is3ph
+          ? `V(L-N) in cell ${cellRef(C_BRK, rVoltLN)} for single-phase circuits, and / (cos phi x SQRT(3) x V L-L) for three-phase circuits`
+          : `V(L-N) in cell ${cellRef(C_BRK, rVoltLN)}`
+      }`
+    ),
+    t(
+      `BREAKER SELECTION = rating standar terdekat yang masih di ATAS AMPERE circuit (${BREAKER_RATINGS.join(", ")} A) — ikut berubah kalau ampere-nya berubah. Ini usulan ukuran breaker, tetap perlu dicek terhadap KHA kabel & jenis bebannya.`,
+      `BREAKER SELECTION = the nearest standard rating still ABOVE the circuit AMPERE (${BREAKER_RATINGS.join(", ")} A) — it follows any change in the ampere. Treat it as a suggested size; still check it against the cable ampacity and the type of load.`
+    ),
+    t(
       `Sel berwarna kuning (cos phi ${cellRef(C_BRK, rPf)}, tegangan ${cellRef(C_BRK, rVolt)}${
+        is3ph ? ` & ${cellRef(C_BRK, rVoltLN)}` : ""
+      }${
         nFix > 0 ? `, baris WATT / UNIT ${rWattUnit}` : ""
       }) boleh diisi/diubah — angka di bawahnya ikut menyesuaikan.`,
       `The yellow cells (cos phi ${cellRef(C_BRK, rPf)}, voltage ${cellRef(C_BRK, rVolt)}${
+        is3ph ? ` & ${cellRef(C_BRK, rVoltLN)}` : ""
+      }${
         nFix > 0 ? `, WATT / UNIT row ${rWattUnit}` : ""
       }) can be filled in or edited — everything below follows.`
     ),
