@@ -1,7 +1,15 @@
 import { DxfBuilder, type Pt } from "./dxf";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
-import { is3Phase, panelPowerFactor, panelVoltage } from "./panelCalc";
+import {
+  BREAKER_RATINGS,
+  circuitAmpere,
+  is3Phase,
+  panelPowerFactor,
+  panelVoltage,
+  panelVoltageLN,
+  suggestBreakerText,
+} from "./panelCalc";
 import { makeT, type Lang } from "./i18n";
 import { COLUMN_WIDTH, pxToMm, type ColumnWidth } from "./panelColumns";
 
@@ -13,6 +21,11 @@ interface FixtureCol {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const nf = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+/** ampere per circuit — 2 desimal, seperti kolom AMPERE di schedule cetak */
+const nf2 = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 // ---------------------------------------------------------------- layer
 const L = {
@@ -210,6 +223,8 @@ function buildColumns(cols: FixtureCol[]): DxfCol[] {
     { title: ["S", "(WATT)"], ...mm(COLUMN_WIDTH.phase), align: "right" },
     { title: ["T", "(WATT)"], ...mm(COLUMN_WIDTH.phase), align: "right" },
     { title: ["REMARKS"], ...mm(COLUMN_WIDTH.remarks), align: "left" },
+    { title: ["AMPERE"], ...mm(COLUMN_WIDTH.ampere), align: "right" },
+    { title: ["BREAKER", "SELECTION"], ...mm(COLUMN_WIDTH.breakerPick), align: "center" },
   ];
 }
 
@@ -271,6 +286,9 @@ export function exportPanelToDxf(
     cells[idxR + 1] = c.phase_s ? nf.format(round1(Number(c.phase_s))) : "";
     cells[idxR + 2] = c.phase_t ? nf.format(round1(Number(c.phase_t))) : "";
     cells[idxR + 3] = c.remarks ?? "";
+    const amp = circuitAmpere(panel, c);
+    cells[idxR + 4] = amp != null ? nf2.format(amp) : "";
+    cells[idxR + 5] = suggestBreakerText(amp);
     return cells;
   });
 
@@ -498,6 +516,13 @@ export function exportPanelToDxf(
     `CONNECTED AMPERE = TOTAL VA / ${is3ph ? "(sqrt3 x V)" : "V"} = ${round1(totalVA)} / ${
       is3ph ? `(1.732 x ${volt})` : volt
     } = ${round1(ampere)} A`,
+    `AMPERE per circuit = (R + S + T) / ${panelVoltageLN(panel)} ${t("untuk 1 fase", "for single-phase")}${
+      is3ph ? `; / (${pf} x 1.732 x ${volt}) ${t("untuk 3 fase", "for three-phase")}` : ""
+    }`,
+    t(
+      `BREAKER SELECTION = rating standar terdekat di atas ampere circuit (${BREAKER_RATINGS.join(", ")} A)`,
+      `BREAKER SELECTION = nearest standard rating above the circuit ampere (${BREAKER_RATINGS.join(", ")} A)`
+    ),
     t(
       "Satuan gambar: milimeter, skala 1:1. Simbol breaker = block BRK_*.",
       "Drawing units: millimeters, 1:1 scale. Breaker symbols = block BRK_*."

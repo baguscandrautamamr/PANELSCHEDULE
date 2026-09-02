@@ -24,6 +24,8 @@ export const COLUMN_WIDTH = {
   fixture: { px: 112, maxPx: 112 },
   phase: { px: 64, maxPx: 88 },
   remarks: { px: 128, maxPx: 240 },
+  ampere: { px: 72, maxPx: 96 },
+  breakerPick: { px: 88, maxPx: 112 },
 } satisfies Record<string, ColumnWidth>;
 
 /** px CSS (96 dpi) -> milimeter, buat gambar DXF skala 1:1. */

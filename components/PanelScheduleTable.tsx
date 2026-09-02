@@ -8,13 +8,26 @@ import { COLUMN_WIDTH, type ColumnWidth } from "@/lib/panelColumns";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
-import { is3Phase, panelPowerFactor, panelVoltage } from "@/lib/panelCalc";
+import {
+  BREAKER_RATINGS,
+  circuitAmpere,
+  is3Phase,
+  panelPowerFactor,
+  panelVoltage,
+  panelVoltageLN,
+  suggestBreakerText,
+} from "@/lib/panelCalc";
 import { Rich, useI18n } from "@/lib/i18n";
 
 const nf = new Intl.NumberFormat("en-US");
 const nf1 = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
+});
+/** ampere per circuit — 2 desimal, seperti kolom AMPERE di schedule cetak */
+const nf2 = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 interface FixtureCol {
@@ -486,6 +499,9 @@ export default function PanelScheduleTable({
 
   const lockedCount = circuits.filter((c) => c.phase_lock).length;
 
+  /** Arus satu circuit dari beban R/S/T-nya (lihat lib/panelCalc). */
+  const ampereOf = (c: Circuit) => circuitAmpere(panel, c);
+
   const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
   const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
   const subT = circuits.reduce((s, c) => s + Number(c.phase_t || 0), 0);
@@ -759,7 +775,7 @@ export default function PanelScheduleTable({
               halaman lanjutan tetap kelihatan ini schedule panel yang mana */}
           <tr className="hidden print:table-row">
             <th
-              colSpan={9 + cols.length}
+              colSpan={11 + cols.length}
               className="sched-page-title px-2 py-1 text-left text-[10px]"
             >
               {[projectName, panel.panel_code, panel.location && `LOCATION ${panel.location}`]
@@ -810,6 +826,30 @@ export default function PanelScheduleTable({
             >
               REMARKS
             </th>
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.ampere)}
+              className="px-2 py-1 align-middle"
+              title={t(
+                "Arus circuit dari beban R/S/T: 1 fase = W / V(L-N), 3 fase = W / (cos φ × √3 × V(L-L))",
+                "Circuit current from the R/S/T load: 1-phase = W / V(L-N), 3-phase = W / (cos φ × √3 × V(L-L))"
+              )}
+            >
+              AMPERE
+            </th>
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.breakerPick)}
+              className="px-2 py-1 align-middle"
+              title={t(
+                "Rating breaker standar terdekat yang masih di atas arus circuit",
+                "Nearest standard breaker rating that is still above the circuit current"
+              )}
+            >
+              BREAKER
+              <br />
+              SELECTION
+            </th>
           </tr>
           <tr className="bg-neutral-100">
             {cols.map((col) => (
@@ -847,6 +887,7 @@ export default function PanelScheduleTable({
             const breakerText = [c.breaker_type, c.breaker_rating]
               .filter(Boolean)
               .join(" ");
+            const amp = ampereOf(c);
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
                 <td className="relative p-0">
@@ -1004,6 +1045,8 @@ export default function PanelScheduleTable({
                   {c.phase_t > 0 ? nf.format(c.phase_t) : ""}
                 </td>
                 <td className="px-2 py-0.5">{c.remarks ?? ""}</td>
+                <td className="px-2 py-0.5 text-right">{amp != null ? nf2.format(amp) : ""}</td>
+                <td className="px-2 py-0.5 text-center">{suggestBreakerText(amp)}</td>
               </tr>
             );
           })}
@@ -1023,7 +1066,7 @@ export default function PanelScheduleTable({
               </td>
             ))}
             <td colSpan={3} className="px-2 py-1" />
-            <td className="px-2 py-1" />
+            <td colSpan={3} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1032,7 +1075,7 @@ export default function PanelScheduleTable({
             <td className="px-2 py-1 text-right">{nf.format(subR)}</td>
             <td className="px-2 py-1 text-right">{nf.format(subS)}</td>
             <td className="px-2 py-1 text-right">{nf.format(subT)}</td>
-            <td className="px-2 py-1" />
+            <td colSpan={3} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1041,7 +1084,7 @@ export default function PanelScheduleTable({
             <td colSpan={3} className="px-2 py-1 text-center">
               {nf1.format(totalWatt)}
             </td>
-            <td className="px-2 py-1" />
+            <td colSpan={3} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1050,7 +1093,7 @@ export default function PanelScheduleTable({
             <td colSpan={3} className="px-2 py-1 text-center">
               {nf1.format(totalVA)}
             </td>
-            <td className="px-2 py-1" />
+            <td colSpan={3} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1059,7 +1102,7 @@ export default function PanelScheduleTable({
             <td colSpan={3} className="px-2 py-1 text-center">
               {nf1.format(ampere)}
             </td>
-            <td className="px-2 py-1" />
+            <td colSpan={3} className="px-2 py-1" />
           </tr>
         </tbody>
       </table>
@@ -1080,6 +1123,19 @@ export default function PanelScheduleTable({
           CONNECTED AMPERE = TOTAL VA / {is3ph ? "(√3 × V)" : "V"} ={" "}
           {nf1.format(totalVA)} / {is3ph ? `(1.732 × ${volt})` : volt} ={" "}
           {nf1.format(ampere)} A
+        </p>
+        <p>
+          AMPERE {t("per circuit", "per circuit")} = W / {panelVoltageLN(panel)}{" "}
+          {t("untuk 1 fase", "for single-phase")}
+          {is3ph
+            ? `; W / (${pf} × 1.732 × ${volt}) ${t("untuk 3 fase", "for three-phase")}`
+            : ""}
+        </p>
+        <p>
+          {t(
+            `BREAKER SELECTION = rating standar terdekat yang masih di atas arus circuit (${BREAKER_RATINGS.join(", ")} A)`,
+            `BREAKER SELECTION = the nearest standard rating still above the circuit current (${BREAKER_RATINGS.join(", ")} A)`
+          )}
         </p>
       </div>
     </div>

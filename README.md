@@ -82,6 +82,15 @@ npm run dev   # http://localhost:3000
   - demand load per fase **R/S/T** mengikuti fase asli circuit di Revit
     (kolom A/B/C panel schedule Revit), kecuali circuit yang fasenya dikunci
     di website (lihat **Rebalance Loads** di bawah)
+  - kolom **AMPERE** per circuit, dihitung dari beban R/S/T yang sudah ada:
+    1 fase `I = W / V(L-N)`, 2 fase `I = W / (cos φ × V L-L)`, 3 fase
+    `I = W / (cos φ × √3 × V L-L)`. `V(L-N)` diambil dari kolom voltage
+    (`220/380V` → 220); kalau panel 3 fase cuma menyebut satu angka, L-N
+    diturunkan dari `L-L / √3` lalu dibulatkan ke tegangan standar terdekat.
+  - kolom **BREAKER SELECTION**: rating standar terkecil yang masih **di atas**
+    ampere circuit — `10, 16, 20, 25, 35, 40, 50, 63, 80, 100, 125, 160, 200 A`.
+    Di atas 200 A ditulis `> 200A` (perlu breaker khusus, tidak ditebak).
+    Sifatnya usulan ukuran; tetap perlu dicek terhadap KHA kabel & jenis beban.
   - summary: total qty per fixture, SUB TOTAL R/S/T, TOTAL WATT,
     TOTAL VA (`watt / cos φ`), CONNECTED AMPERE (`VA / (√3 × V L-L)` untuk 3PH;
     voltage `220/380V` dari Revit → yang dipakai V L-L = 380)
@@ -127,6 +136,10 @@ npm run dev   # http://localhost:3000
     watt-nya sudah lengkap tapi hasilnya tetap tidak sama dengan angka Revit —
     mis. bebannya bukan dari fixture di tabel ini; jumlah baris seperti itu
     dicatat di bawah tabel.
+  - kolom **AMPERE** & **BREAKER SELECTION** ikut diexport, dua-duanya sebagai
+    formula: ampere mengacu ke sel `cos φ` / `V (L-L)` / `V (L-N)`, dan breaker
+    selection memakai `IF` bertingkat atas sel ampere-nya — jadi ikut berubah
+    kalau watt/unit, cos φ, atau tegangan diedit di Excel.
   - `SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
     `CONNECTED AMPERE = TOTAL VA / (√3 × V)`
   - **sel input berwarna kuning** (`cos φ`, tegangan, baris `WATT / UNIT`) —
