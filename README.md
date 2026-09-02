@@ -70,6 +70,10 @@ npm run dev   # http://localhost:3000
     `RECEPTACLE`, dst; nama family-nya sendiri (`ACT_E_HIGHBAY_BY698P`,
     `ACT_E_RECEPTACLE INDUSTRIAL`) tidak ikut di FUNCTION tapi tetap jadi kolom
     FIXTURE tersendiri. Circuit campuran digabung: `LIGHTING + RECEPTACLE (D)/7`.
+  - **watt per unit fixture** diambil add-in dari parameter daya di type/instance
+    (`Wattage`, `Watt`, `Daya`, `Power`); kalau tidak ada, dari *Apparent Load*
+    connector listriknya × cos φ panel. Kalau dua-duanya kosong, kolomnya tetap
+    bisa diisi belakangan di Excel (lihat **Export Excel**).
   - demand load per fase **R/S/T** mengikuti fase asli circuit di Revit
     (kolom A/B/C panel schedule Revit), kecuali circuit yang fasenya dikunci
     di website (lihat **Rebalance Loads** di bawah)
@@ -100,16 +104,24 @@ npm run dev   # http://localhost:3000
 - **Export Excel**: header bertingkat (FIXTURE / DEMAND LOAD), garis di semua sel,
   lebar kolom mengikuti isi, dan isinya **formula Excel hidup**:
   - demand load R/S/T per circuit = `SUMPRODUCT(qty fixture × baris WATT / UNIT)`,
-    dibagi 3 untuk circuit 3 fase seimbang. Kalau hasil qty × watt tidak sama
-    dengan angka Revit (beban bukan dari fixture, fase tidak seimbang, atau
-    watt/unit tidak bisa ditentukan), angka Revit dipakai apa adanya supaya
-    schedule tidak jadi salah — jumlah baris seperti ini dicatat di bawah tabel.
+    dibagi rata ke fase yang berbeban (mis. ÷3 untuk circuit 3 fase seimbang).
   - baris `WATT / UNIT` diambil dari `circuit_fixtures.watt_per_unit`. Kalau
     kolom itu kosong di database (family Revit tidak punya parameter `Wattage`),
-    nilainya **diturunkan dari data yang ada**: `demand load ÷ qty` pada circuit
-    yang hanya memakai satu kolom fixture, dan hanya kalau semua circuit
-    semacam itu sepakat. Angka hasil turunan dicetak **miring** + dicatat di
-    bawah tabel supaya bisa diverifikasi.
+    nilainya **dihitung balik dari demand load** (`lib/fixtureWatt.ts`): tiap
+    circuit jadi satu persamaan `Σ(qty × watt/unit) = demand load`, persamaan
+    yang menyisakan satu kolom belum diketahui dipecahkan, hasilnya dipakai di
+    circuit lain, begitu seterusnya — jadi kolom yang tidak pernah muncul
+    sendirian pun tetap dapat angka. Kandidat yang tidak sepakat sengaja
+    dibiarkan kosong. Angka hasil hitungan balik dicetak **miring** + dicatat
+    di bawah tabel supaya bisa diverifikasi.
+  - kolom yang watt-nya **belum ketemu** tetap dapat formula: selnya berisi
+    `IF(<masih ada watt kosong>, <angka Revit>, SUMPRODUCT(...))` — jadi selama
+    baris `WATT / UNIT` kosong yang tampil angka Revit, dan **begitu watt-nya
+    diisi di Excel, demand load + SUB TOTAL + TOTAL WATT/VA + CONNECTED AMPERE
+    langsung ikut terhitung**. Angka mati (bukan formula) hanya dipakai kalau
+    watt-nya sudah lengkap tapi hasilnya tetap tidak sama dengan angka Revit —
+    mis. bebannya bukan dari fixture di tabel ini; jumlah baris seperti itu
+    dicatat di bawah tabel.
   - `SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
     `CONNECTED AMPERE = TOTAL VA / (√3 × V)`
   - **sel input berwarna kuning** (`cos φ`, tegangan, baris `WATT / UNIT`) —
