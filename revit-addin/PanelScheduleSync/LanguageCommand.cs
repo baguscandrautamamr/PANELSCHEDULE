@@ -1,4 +1,7 @@
 using Autodesk.Revit.Attributes;
+// ElementSet (parameter IExternalCommand.Execute) ada di namespace ini —
+// tanpa using-nya build gagal CS0246 + CS0535.
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 
 namespace PanelScheduleSync;

@@ -71,9 +71,14 @@ npm run dev   # http://localhost:3000
     `ACT_E_RECEPTACLE INDUSTRIAL`) tidak ikut di FUNCTION tapi tetap jadi kolom
     FIXTURE tersendiri. Circuit campuran digabung: `LIGHTING + RECEPTACLE (D)/7`.
   - **watt per unit fixture** diambil add-in dari parameter daya di type/instance
-    (`Wattage`, `Watt`, `Daya`, `Power`); kalau tidak ada, dari *Apparent Load*
-    connector listriknya × cos φ panel. Kalau dua-duanya kosong, kolomnya tetap
-    bisa diisi belakangan di Excel (lihat **Export Excel**).
+    (`Wattage`, `Watt`, `Daya`, `Power`); kalau tidak ada, dari beban semu
+    connector listriknya — parameter *Apparent Load*, atau kalau perlu dibaca
+    dari teks **Electrical Data** yang tampil di Properties (`230 V/1-150 VA`
+    → 150 VA) — lalu dikali perbandingan watt : VA circuit-nya. Untuk lampu yang
+    cos φ-nya 1 di Revit, `150 VA` tetap jadi `150 W` (tidak dikali cos φ panel),
+    jadi qty × watt/unit selalu ketemu dengan DEMAND LOAD circuit. Kalau semua
+    sumber kosong, kolomnya tetap bisa diisi belakangan di Excel (lihat
+    **Export Excel**).
   - demand load per fase **R/S/T** mengikuti fase asli circuit di Revit
     (kolom A/B/C panel schedule Revit), kecuali circuit yang fasenya dikunci
     di website (lihat **Rebalance Loads** di bawah)

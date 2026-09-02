@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 
@@ -154,8 +156,16 @@ public class PanelExtractor(Document doc)
         int circuitNo = ParseCircuitNumber(cs.CircuitNumber);
 
         // load (watt): pakai True Load, fallback Apparent Load x pf
+        double apparent = ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes) ?? 0;
         double watt = ParamDouble(cs, BuiltInParameter.RBS_ELEC_TRUE_LOAD, UnitTypeId.Watts)
-                      ?? (ParamDouble(cs, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes) ?? 0) * powerFactor;
+                      ?? apparent * powerFactor;
+
+        // Perbandingan watt : VA circuit ini. Beban semu (VA) tiap fixture
+        // diubah jadi watt dengan angka yang sama, supaya qty x watt/unit
+        // selalu ketemu dengan DEMAND LOAD circuit-nya. Lampu yang cos phi-nya
+        // 1 di Revit (mis. "230 V/1-150 VA" -> True Load 150 W) tetap 150 W,
+        // tidak ikut dikali cos phi panel.
+        double vaToWatt = apparent > 0 && watt > 0 ? watt / apparent : 1.0;
 
         var circuit = new CircuitData
         {
@@ -172,7 +182,7 @@ public class PanelExtractor(Document doc)
         };
 
         if (!isEmpty)
-            circuit.Fixtures = ExtractFixtures(cs, powerFactor);
+            circuit.Fixtures = ExtractFixtures(cs, vaToWatt);
 
         // FUNCTION = jenis fixture yang terhubung + nomor circuit Revit apa
         // adanya, mis. "LIGHTING (D)/4" atau "RECEPTACLE (D)/42".
@@ -349,7 +359,7 @@ public class PanelExtractor(Document doc)
     }
 
     /// <summary>Group element di circuit per family + type (= type family Revit).</summary>
-    private List<FixtureData> ExtractFixtures(ElectricalSystem cs, double powerFactor)
+    private List<FixtureData> ExtractFixtures(ElectricalSystem cs, double vaToWatt)
     {
         var groups = new Dictionary<string, FixtureData>();
 
@@ -373,7 +383,7 @@ public class PanelExtractor(Document doc)
             fx.Quantity++;
             // watt bisa saja cuma terisi di sebagian unit (mis. hanya satu
             // element yang parameternya diisi) — pakai yang pertama ketemu
-            fx.WattPerUnit ??= FixtureWatt(el, elType, powerFactor);
+            fx.WattPerUnit ??= FixtureWatt(el, elType, vaToWatt);
         }
 
         return [.. groups.Values];
@@ -385,18 +395,23 @@ public class PanelExtractor(Document doc)
     /// </summary>
     private static readonly string[] WattParamNames = ["Wattage", "Watt", "Daya", "Power"];
 
+    /// <summary>Angka beban di teks "Electrical Data" Revit ("230 V/1-150 VA").</summary>
+    private static readonly Regex LoadInText = new(@"([0-9][0-9.,]*)\s*(?:VA|W)\b", RegexOptions.IgnoreCase);
+
     /// <summary>
     /// Watt satu unit fixture — jadi baris "WATT / UNIT" di panel schedule.
     /// Urutan sumber:
     /// 1. parameter daya di type/instance ("Wattage", "Watt", "Daya", "Power");
-    /// 2. Apparent Load connector listriknya x cos phi panel. Ini angka yang
-    ///    dipakai Revit menyusun beban circuit, jadi qty x watt hasilnya sejalan
-    ///    dengan DEMAND LOAD circuit-nya.
-    /// null kalau dua-duanya tidak ada — biar tetap bisa diisi manual di
+    /// 2. beban semu (VA) connector listriknya — dari parameter Apparent Load,
+    ///    atau kalau tidak ada dari teks "Electrical Data" yang tampil di
+    ///    Properties ("230 V/1-150 VA" -> 150 VA) — lalu dikali perbandingan
+    ///    watt:VA circuit-nya. Ini angka yang dipakai Revit menyusun beban
+    ///    circuit, jadi qty x watt sejalan dengan DEMAND LOAD-nya.
+    /// null kalau tidak ada satu pun — biar tetap bisa diisi manual di
     /// website/Excel (di Excel selnya jadi sel isian, dan begitu diisi demand
     /// load-nya ikut terhitung lewat formula).
     /// </summary>
-    private static double? FixtureWatt(Element el, ElementType? elType, double powerFactor)
+    private static double? FixtureWatt(Element el, ElementType? elType, double vaToWatt)
     {
         foreach (string name in WattParamNames)
         {
@@ -406,9 +421,35 @@ public class PanelExtractor(Document doc)
         }
 
         double? va = ParamDouble(el, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes)
-                     ?? ParamDouble(elType, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes);
+                     ?? ParamDouble(elType, BuiltInParameter.RBS_ELEC_APPARENT_LOAD, UnitTypeId.VoltAmperes)
+                     ?? ParamDouble(el, "Apparent Load", UnitTypeId.VoltAmperes)
+                     ?? ParamDouble(elType, "Apparent Load", UnitTypeId.VoltAmperes)
+                     ?? LoadFromText(ParamStringOrNull(el.LookupParameter("Electrical Data")))
+                     ?? LoadFromText(ParamStringOrNull(elType?.LookupParameter("Electrical Data")));
 
-        return va > 0 ? Math.Round(va.Value * powerFactor, 1) : null;
+        return va > 0 ? Math.Round(va.Value * vaToWatt, 1) : null;
+    }
+
+    /// <summary>
+    /// Angka beban dari teks "Electrical Data" ("230 V/1-150 VA" -> 150).
+    /// Dipakai kalau parameter angkanya tidak bisa dibaca — teks ini yang
+    /// tampil di Properties Revit, jadi hampir selalu ada untuk fixture yang
+    /// sudah punya connector listrik. Angkanya diformat Revit mengikuti culture
+    /// Windows, jadi dicoba culture dulu baru invariant.
+    /// </summary>
+    private static double? LoadFromText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        MatchCollection matches = LoadInText.Matches(text!);
+        if (matches.Count == 0) return null;
+
+        string number = matches[matches.Count - 1].Groups[1].Value;
+        if (!double.TryParse(number, NumberStyles.Any, CultureInfo.CurrentCulture, out double value)
+            && !double.TryParse(number, NumberStyles.Any, CultureInfo.InvariantCulture, out value))
+            return null;
+
+        return value > 0 ? value : null;
     }
 
     private static int SafePoles(ElectricalSystem cs)
