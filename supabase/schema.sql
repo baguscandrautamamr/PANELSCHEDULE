@@ -40,9 +40,10 @@ create table if not exists circuits (
   revit_circuit_number text,         -- "Circuit Number" Revit apa adanya: "(D)/4", "DB-FG/42", "1,3,5"
                                      -- dipakai Pull buat mencocokkan baris ini dengan circuit di model
   function_name text not null,       -- "LIGHTING (D)/4"
-  breaker_type text,                 -- MCB 1P / MCB 3P / MCCB 3P / RCBO 2P / RCBO 4P
-  breaker_rating text,               -- "10A"
-  outgoing_cable text,               -- "NYM 3C x 2.5mm2"
+                                     -- CATATAN: breaker & kabel tidak disimpan lagi.
+                                     -- Kolom BREAKER, TYPE, dan OD di schedule dihitung
+                                     -- website dari beban circuit (BREAKER SELECTION +
+                                     -- katalog kabel NYY KMI) — lihat lib/circuitSpec.ts.
   phase_r numeric default 0,         -- watt di fase R (1PH: isi salah satu kolom saja;
   phase_s numeric default 0,         --  3PH: diisi balance di R/S/T)
   phase_t numeric default 0,
@@ -64,6 +65,12 @@ create table if not exists circuits (
 alter table circuits add column if not exists source text not null default 'revit';
 alter table circuits add column if not exists revit_circuit_number text;
 alter table circuits add column if not exists phase_lock text;
+-- breaker_type / breaker_rating / outgoing_cable sudah tidak dipakai (nilainya
+-- dihitung di website). Kolomnya sengaja dibiarkan supaya data lama tidak
+-- hilang; hapus manual kalau memang sudah tidak diperlukan:
+--   alter table circuits drop column if exists breaker_type;
+--   alter table circuits drop column if exists breaker_rating;
+--   alter table circuits drop column if exists outgoing_cable;
 do $$
 begin
   alter table circuits add constraint circuits_phase_lock_check

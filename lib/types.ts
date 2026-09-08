@@ -39,9 +39,11 @@ export interface Circuit {
    */
   revit_circuit_number: string | null;
   function_name: string;
-  breaker_type: string | null;
-  breaker_rating: string | null;
-  outgoing_cable: string | null;
+  /**
+   * Breaker & kabel TIDAK disimpan lagi: keduanya diturunkan dari arus circuit
+   * lewat BREAKER SELECTION (lihat lib/circuitSpec), jadi kolom BREAKER, TYPE,
+   * dan OD di schedule selalu konsisten dengan bebannya.
+   */
   phase_r: number;
   phase_s: number;
   phase_t: number;

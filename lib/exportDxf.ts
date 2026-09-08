@@ -3,13 +3,13 @@ import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import {
   BREAKER_RATINGS,
-  circuitAmpere,
   is3Phase,
   panelPowerFactor,
   panelVoltage,
   panelVoltageLN,
   suggestBreakerText,
 } from "./panelCalc";
+import { circuitSpec } from "./circuitSpec";
 import { makeT, type Lang } from "./i18n";
 import { COLUMN_WIDTH, pxToMm, type ColumnWidth } from "./panelColumns";
 
@@ -52,7 +52,7 @@ const PAD = 1.5;
 const CHAR_W = 0.72;
 
 const COL_SLD = 26;
-/** indeks kolom fixture pertama: SLD, NO., FUNCTION, BREAKER, CABLE */
+/** indeks kolom fixture pertama: SLD, NO., FUNCTION, BREAKER, TYPE */
 const FIXTURE_COL0 = 5;
 /** jarak bus vertikal dari tepi kiri kolom SLD */
 const BUS_X = 5;
@@ -124,20 +124,21 @@ function wrapText(value: string, width: number, height: number): string[] {
 
 // ---------------------------------------------------------------- breaker block
 interface BreakerStyle {
-  kind: "MCB" | "MCCB" | "RCBO";
+  /** RCBO & RCCB sama-sama proteksi arus bocor, simbolnya sama */
+  kind: "MCB" | "MCCB" | "RCD";
   poles: number;
 }
 
-/** "MCCB 3P" / "RCBO 2P" / "MCB 1P" -> jenis + jumlah pole. */
+/** "MCCB 3P" / "RCBO 2P" / "RCCB 4P" / "MCB 1P" -> jenis + jumlah pole. */
 function parseBreaker(breakerType: string | null): BreakerStyle {
   const t = (breakerType ?? "").toUpperCase();
   const kind: BreakerStyle["kind"] = t.includes("MCCB")
     ? "MCCB"
-    : t.includes("RCBO")
-      ? "RCBO"
+    : t.includes("RCBO") || t.includes("RCCB")
+      ? "RCD"
       : "MCB";
   const m = t.match(/(\d+)\s*P/);
-  const poles = m ? Math.min(4, Math.max(1, parseInt(m[1], 10))) : kind === "MCCB" ? 3 : kind === "RCBO" ? 2 : 1;
+  const poles = m ? Math.min(4, Math.max(1, parseInt(m[1], 10))) : kind === "MCCB" ? 3 : kind === "RCD" ? 2 : 1;
   return { kind, poles };
 }
 
@@ -165,7 +166,7 @@ function defineBreakerBlock(dxf: DxfBuilder, style: BreakerStyle) {
 
   // kotak MCCB dibuat cukup besar supaya ujung lengan kontak tetap di dalam
   if (style.kind === "MCCB") dxf.rect(1.8, -3.6, 8, 8.2);
-  if (style.kind === "RCBO") dxf.circle([6, 1.8], 1.9);
+  if (style.kind === "RCD") dxf.circle([6, 1.8], 1.9);
 
   dxf.endBlock();
 }
@@ -213,7 +214,7 @@ function buildColumns(cols: FixtureCol[]): DxfCol[] {
     { title: ["NO."], ...mm(COLUMN_WIDTH.no), align: "center" },
     { title: ["FUNCTION"], ...mm(COLUMN_WIDTH.function), align: "left" },
     { title: ["BREAKER"], ...mm(COLUMN_WIDTH.breaker), align: "center" },
-    { title: ["CABLE"], ...mm(COLUMN_WIDTH.cable), align: "left" },
+    { title: ["TYPE"], ...mm(COLUMN_WIDTH.cable), align: "left" },
     ...cols.map<DxfCol>((c) => ({
       title: [c.type, c.label ?? ""].filter(Boolean),
       ...mm(COLUMN_WIDTH.fixture),
@@ -225,6 +226,7 @@ function buildColumns(cols: FixtureCol[]): DxfCol[] {
     { title: ["REMARKS"], ...mm(COLUMN_WIDTH.remarks), align: "left" },
     { title: ["AMPERE"], ...mm(COLUMN_WIDTH.ampere), align: "right" },
     { title: ["BREAKER", "SELECTION"], ...mm(COLUMN_WIDTH.breakerPick), align: "center" },
+    { title: ["OD", "(mm)"], ...mm(COLUMN_WIDTH.od), align: "center" },
   ];
 }
 
@@ -258,7 +260,9 @@ export function exportPanelToDxf(
     return s;
   };
   const mainStyle = panel.main_breaker_type ? remember(panel.main_breaker_type) : null;
-  const rowStyles = circuits.map((c) => remember(c.breaker_type));
+  /** Breaker, kabel, dan OD tiap circuit — diturunkan dari arus circuit. */
+  const specs = circuits.map((c) => circuitSpec(panel, c));
+  const rowStyles = specs.map((spec) => remember(spec.rule.breakerType));
   defineFixedBlocks(dxf);
   for (const s of styles.values()) defineBreakerBlock(dxf, s);
 
@@ -272,12 +276,13 @@ export function exportPanelToDxf(
       .reduce((s, f) => s + f.quantity, 0);
 
   /** Isi tiap baris circuit per kolom (indeks kolom = indeks tableCols). */
-  const bodyRows: string[][] = circuits.map((c) => {
+  const bodyRows: string[][] = circuits.map((c, i) => {
+    const spec = specs[i];
     const cells = tableCols.map(() => "");
     cells[1] = String(c.circuit_no);
     cells[2] = c.function_name;
-    cells[3] = [c.breaker_type, c.breaker_rating].filter(Boolean).join(" ");
-    cells[4] = c.outgoing_cable ?? "";
+    cells[3] = spec.breaker;
+    cells[4] = spec.cableText;
     cols.forEach((col, i) => {
       const q = qtyOf(c, col.key);
       if (q) cells[FIXTURE_COL0 + i] = String(q);
@@ -286,9 +291,10 @@ export function exportPanelToDxf(
     cells[idxR + 1] = c.phase_s ? nf.format(round1(Number(c.phase_s))) : "";
     cells[idxR + 2] = c.phase_t ? nf.format(round1(Number(c.phase_t))) : "";
     cells[idxR + 3] = c.remarks ?? "";
-    const amp = circuitAmpere(panel, c);
+    const amp = spec.ampere;
     cells[idxR + 4] = amp != null ? nf2.format(amp) : "";
     cells[idxR + 5] = suggestBreakerText(amp);
+    cells[idxR + 6] = spec.odText;
     return cells;
   });
 
@@ -487,7 +493,7 @@ export function exportPanelToDxf(
     const mid = bodyBottom - i * rowH - rowH / 2;
     dxf.layer(L.summary);
     // label diratakan kanan tepat sebelum kolom angka yang diisi baris ini —
-    // baris TOTAL mengisi kolom fixture, jadi labelnya mundur ke kolom CABLE
+    // baris TOTAL mengisi kolom fixture, jadi labelnya mundur ke kolom TYPE
     const labelX = (s.qty ? colX[FIXTURE_COL0] : colX[idxR]) - PAD;
     dxf.text(s.label, [labelX, mid], { height: TXT_HEAD, align: "right" });
     summaryLines[i].forEach((lines, k) => cell(k, mid, lines, TXT_HEAD));
@@ -522,6 +528,14 @@ export function exportPanelToDxf(
     t(
       `BREAKER SELECTION = rating standar terdekat di atas ampere circuit (${BREAKER_RATINGS.join(", ")} A)`,
       `BREAKER SELECTION = nearest standard rating above the circuit ampere (${BREAKER_RATINGS.join(", ")} A)`
+    ),
+    t(
+      "BREAKER = LIGHTING MCB 1P min. 10A; RECEPTACLE 1 fase RCBO 2P 30mA min. 16A; RECEPTACLE 3 fase RCCB 4P 30mA min. 16A - rating ikut BREAKER SELECTION",
+      "BREAKER = LIGHTING MCB 1P min. 10A; single-phase RECEPTACLE RCBO 2P 30mA min. 16A; three-phase RECEPTACLE RCCB 4P 30mA min. 16A - rating follows BREAKER SELECTION"
+    ),
+    t(
+      "TYPE & OD = kabel NYY katalog KMI (IEC 60502-1) - ukuran terkecil dengan KHA di udara di atas rating breaker; min. LIGHTING 3C x 2.5mm2, RECEPTACLE 1 fase 3C x 4mm2, RECEPTACLE 3 fase 5C x 4mm2",
+      "TYPE & OD = NYY cable from the KMI catalogue (IEC 60502-1) - smallest size whose in-air ampacity is above the breaker rating; min. LIGHTING 3C x 2.5mm2, single-phase RECEPTACLE 3C x 4mm2, three-phase RECEPTACLE 5C x 4mm2"
     ),
     t(
       "Satuan gambar: milimeter, skala 1:1. Simbol breaker = block BRK_*.",

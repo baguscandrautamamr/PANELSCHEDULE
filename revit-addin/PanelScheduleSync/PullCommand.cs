@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
@@ -9,19 +8,20 @@ namespace PanelScheduleSync;
 
 /// <summary>
 /// Tombol "Pull from Website": tarik perubahan yang diedit di website
-/// kembali ke model Revit — rating circuit, "Breaker Type", "Wire Size",
-/// dan FUNCTION (Load Name / Circuit Description) kalau parameternya ada
-/// dan tidak read-only.
+/// kembali ke model Revit — FUNCTION (Load Name / Circuit Description) kalau
+/// parameternya ada dan tidak read-only, plus disconnect circuit yang dihapus
+/// lewat website. Breaker & kabel TIDAK ikut: keduanya hasil hitungan website
+/// dari beban circuit, bukan data yang disimpan per circuit.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
-public partial class PullCommand : IExternalCommand
+public class PullCommand : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         Document doc = commandData.Application.ActiveUIDocument.Document;
         var client = new SupabaseClient();
         var report = new StringBuilder();
-        int updated = 0, skippedCable = 0, skippedFunction = 0;
+        int updated = 0, skippedFunction = 0;
         int disconnected = 0, failedDisconnect = 0;
 
         // Baris tombstone yang sudah beres di model — baru dibersihkan dari
@@ -69,31 +69,6 @@ public partial class PullCommand : IExternalCommand
                     if (row is null) continue;
 
                     bool changed = false;
-
-                    // rating breaker ("20A" -> 20 A)
-                    double? amp = ParseAmpere(row.BreakerRating);
-                    if (amp is not null)
-                    {
-                        Parameter? p = cs.get_Parameter(BuiltInParameter.RBS_ELEC_CIRCUIT_RATING_PARAM);
-                        if (p is { IsReadOnly: false })
-                        {
-                            double internalVal = UnitUtils.ConvertToInternalUnits(amp.Value, UnitTypeId.Amperes);
-                            if (Math.Abs(p.AsDouble() - internalVal) > 1e-6)
-                            {
-                                p.Set(internalVal);
-                                changed = true;
-                            }
-                        }
-                    }
-
-                    // breaker type -> shared param "Breaker Type" (kalau ada)
-                    changed |= TrySetText(cs, "Breaker Type", row.BreakerType);
-
-                    // kabel -> param "Wire Size" (di banyak project read-only karena
-                    // dihitung dari wire type — kalau begitu dilewati)
-                    bool cableSet = TrySetText(cs, "Wire Size", row.OutgoingCable);
-                    if (!cableSet && !string.IsNullOrWhiteSpace(row.OutgoingCable)) skippedCable++;
-                    changed |= cableSet;
 
                     // FUNCTION -> "Load Name" / "Circuit Description" (nama beda-beda
                     // tiap versi Revit/family) — kalau tidak ada param yang cocok dan
@@ -172,7 +147,6 @@ public partial class PullCommand : IExternalCommand
                     + (failedDisconnect > 0
                         ? $"{failedDisconnect} circuit GAGAL di-disconnect — coba Pull lagi.\n"
                         : "")
-                    + $"{skippedCable} nilai kabel dilewati (param 'Wire Size' read-only).\n"
                     + $"{skippedFunction} nilai function dilewati (param 'Load Name'/'Circuit Description' "
                     + "tidak ada atau read-only).",
                     $"Done. {updated} circuits updated.\n"
@@ -180,7 +154,6 @@ public partial class PullCommand : IExternalCommand
                     + (failedDisconnect > 0
                         ? $"{failedDisconnect} circuits FAILED to disconnect — run Pull again.\n"
                         : "")
-                    + $"{skippedCable} cable values skipped ('Wire Size' parameter is read-only).\n"
                     + $"{skippedFunction} function values skipped ('Load Name'/'Circuit Description' "
                     + "parameter missing or read-only).")
                 + $"\n\n{report}");
@@ -259,21 +232,4 @@ public partial class PullCommand : IExternalCommand
         string digits = new(s!.Trim().TakeWhile(char.IsDigit).ToArray());
         return int.TryParse(digits, out int n) ? n : 0;
     }
-
-    /// <summary>"20A", "20 A", "20" -> 20.0</summary>
-    private static double? ParseAmpere(string? rating)
-    {
-        if (string.IsNullOrWhiteSpace(rating)) return null;
-        Match m = AmpereRegex().Match(rating);
-        return m.Success && double.TryParse(m.Value, out double v) ? v : null;
-    }
-
-#if NET8_0_OR_GREATER
-    [GeneratedRegex(@"\d+(\.\d+)?")]
-    private static partial Regex AmpereRegex();
-#else
-    // [GeneratedRegex] belum ada di .NET Framework 4.8 (Revit 2023)
-    private static readonly Regex AmpereRegexCompiled = new(@"\d+(\.\d+)?", RegexOptions.Compiled);
-    private static Regex AmpereRegex() => AmpereRegexCompiled;
-#endif
 }

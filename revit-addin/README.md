@@ -32,8 +32,8 @@ panah keluar / masuk, dan globe untuk bahasa):
 
 - **Push to Website** — extract & kirim data panel ke Supabase (pilih project
   tujuan di dialog; FUNCTION diisi dari family Revit yang terhubung di circuit).
-- **Pull from Website** — tarik perubahan breaker & kabel yang diedit di
-  website kembali ke model (rating circuit, param "Breaker Type" / "Wire Size"
+- **Pull from Website** — tarik perubahan FUNCTION yang diedit di
+  website kembali ke model (param "Load Name" / "Circuit Description"
   kalau ada dan tidak read-only).
 - **Language / Bahasa** — ganti bahasa add-in **Indonesia ⇄ English**. Label
   tombol, tooltip, dialog, dan laporan hasil Push/Pull ikut berubah saat itu
@@ -49,8 +49,11 @@ di-copy saat install.
 
 1. Collect semua Electrical Equipment yang punya assigned circuits (= panel).
 2. Per panel: baca supply circuit (source panel, main breaker, incoming cable,
-   fase/wire dari jumlah pole-nya) dan semua circuit (nomor, load name, rating,
-   poles, true load) — diurutkan per nomor circuit seperti panel schedule Revit.
+   fase/wire dari jumlah pole-nya) dan semua circuit (nomor, load name, poles,
+   true load) — diurutkan per nomor circuit seperti panel schedule Revit.
+   Breaker & kabel per circuit **tidak** ikut diambil dari Revit: kolom BREAKER,
+   TYPE, dan OD di website dihitung sendiri dari beban circuit (BREAKER
+   SELECTION + katalog kabel NYY KMI).
 3. Nomor circuit dibaca apa adanya dari Revit, termasuk yang pakai prefix panel
    (`(D)/7`, `DB-FG/7` — tergantung setting Circuit Naming) dan multi-pole
    (`1,3,5` → nomor slot pertama = 1). Nomor di web = nomor di Revit, jadi
@@ -90,6 +93,5 @@ Tidak butuh Revit terinstall — referensi API pakai package NuGet
 
 ## TODO berikutnya
 
-- Baca breaker type RCBO/MCCB dari shared parameter (sekarang default `MCB {poles}P`)
 - IP rating / symbol tag / fuse dari parameter panel
 - Pilih panel tertentu saja sebelum push (sekarang push semua)

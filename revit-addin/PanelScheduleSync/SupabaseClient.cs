@@ -87,7 +87,7 @@ public class SupabaseClient
         // hapus, ditangani GetDeletedCircuitsByPanelCodeAsync).
         JsonDocument rows = await SendAsync(
             HttpMethod.Get,
-            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=gt.0&select=circuit_no,revit_circuit_number,function_name,breaker_type,breaker_rating,outgoing_cable&order=circuit_no");
+            $"circuits?panel_id=eq.{panelId}&source=eq.revit&circuit_no=gt.0&select=circuit_no,revit_circuit_number,function_name&order=circuit_no");
 
         var list = new List<CircuitData>();
         foreach (JsonElement row in rows.RootElement.EnumerateArray())
@@ -97,9 +97,6 @@ public class SupabaseClient
                 CircuitNo = row.GetProperty("circuit_no").GetInt32(),
                 RevitCircuitNumber = row.GetProperty("revit_circuit_number").GetString(),
                 FunctionName = row.GetProperty("function_name").GetString() ?? "",
-                BreakerType = row.GetProperty("breaker_type").GetString(),
-                BreakerRating = row.GetProperty("breaker_rating").GetString(),
-                OutgoingCable = row.GetProperty("outgoing_cable").GetString(),
             });
         }
         return list;
@@ -182,9 +179,6 @@ public class SupabaseClient
                         ["circuit_no"] = c.CircuitNo,
                         ["revit_circuit_number"] = c.RevitCircuitNumber,
                         ["function_name"] = c.FunctionName,
-                        ["breaker_type"] = c.BreakerType,
-                        ["breaker_rating"] = c.BreakerRating,
-                        ["outgoing_cable"] = c.OutgoingCable,
                         ["phase_r"] = lockPhase is null ? c.PhaseR : (lockPhase == "R" ? watt : 0),
                         ["phase_s"] = lockPhase is null ? c.PhaseS : (lockPhase == "S" ? watt : 0),
                         ["phase_t"] = lockPhase is null ? c.PhaseT : (lockPhase == "T" ? watt : 0),

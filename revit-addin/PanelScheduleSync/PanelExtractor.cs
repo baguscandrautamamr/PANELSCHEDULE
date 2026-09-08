@@ -173,11 +173,6 @@ public class PanelExtractor(Document doc)
             RevitCircuitNumber = string.IsNullOrWhiteSpace(cs.CircuitNumber)
                 ? null
                 : cs.CircuitNumber.Trim(),
-            // TODO: kalau ada shared parameter "Breaker Type" (RCBO/MCCB), itu yang dipakai
-            BreakerType = cs.LookupParameter("Breaker Type")?.AsString()
-                          ?? $"MCB {poles}P",
-            BreakerRating = $"{cs.Rating:0}A",
-            OutgoingCable = cs.LookupParameter("Wire Size")?.AsString(),
             IsSpare = isEmpty,
         };
 
