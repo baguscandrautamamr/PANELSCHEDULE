@@ -33,9 +33,11 @@ public class CircuitData
     public string? RevitCircuitNumber { get; set; }
 
     public string FunctionName { get; set; } = "";
-    public string? BreakerType { get; set; }
-    public string? BreakerRating { get; set; }
-    public string? OutgoingCable { get; set; }
+
+    // Breaker & kabel TIDAK diambil dari Revit lagi: keduanya dihitung di
+    // website dari beban circuit (BREAKER SELECTION + katalog kabel NYY),
+    // jadi datanya tidak ikut Push maupun Pull.
+
     public double PhaseR { get; set; }
     public double PhaseS { get; set; }
     public double PhaseT { get; set; }

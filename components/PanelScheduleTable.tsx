@@ -8,9 +8,9 @@ import { COLUMN_WIDTH, type ColumnWidth } from "@/lib/panelColumns";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
+import { circuitSpec } from "@/lib/circuitSpec";
 import {
   BREAKER_RATINGS,
-  circuitAmpere,
   is3Phase,
   panelPowerFactor,
   panelVoltage,
@@ -105,7 +105,8 @@ function MiniCircuitBranch({
 }) {
   const t = (breakerType ?? "").toUpperCase();
   const isMccb = t.includes("MCCB");
-  const isRcbo = t.includes("RCBO");
+  // RCBO & RCCB sama-sama proteksi arus bocor — digambar lingkaran RCD
+  const isRcbo = t.includes("RCBO") || t.includes("RCCB");
   return (
     <div className="pointer-events-none absolute inset-0">
       <svg
@@ -127,9 +128,6 @@ function MiniCircuitBranch({
 
 const emptyNewCircuit = {
   function_name: "",
-  breaker_type: "MCB 1P",
-  breaker_rating: "10A",
-  outgoing_cable: "",
   watt: "",
   phase: "R" as "R" | "S" | "T" | "3PH",
   remarks: "",
@@ -381,9 +379,6 @@ export default function PanelScheduleTable({
     const { watt, phase } = deriveWattPhase(c);
     setNewCircuit({
       function_name: c.function_name,
-      breaker_type: c.breaker_type ?? "MCB 1P",
-      breaker_rating: c.breaker_rating ?? "",
-      outgoing_cable: c.outgoing_cable ?? "",
       watt,
       phase,
       remarks: c.remarks ?? "",
@@ -407,9 +402,6 @@ export default function PanelScheduleTable({
 
     const patch: Record<string, string | number | boolean | null> = {
       function_name: newCircuit.function_name.trim(),
-      breaker_type: newCircuit.breaker_type || null,
-      breaker_rating: newCircuit.breaker_rating || null,
-      outgoing_cable: newCircuit.outgoing_cable || null,
       remarks: newCircuit.remarks || null,
       phase_r: 0,
       phase_s: 0,
@@ -498,9 +490,6 @@ export default function PanelScheduleTable({
     circuits.reduce((s, c) => s + qtyOf(c, key), 0);
 
   const lockedCount = circuits.filter((c) => c.phase_lock).length;
-
-  /** Arus satu circuit dari beban R/S/T-nya (lihat lib/panelCalc). */
-  const ampereOf = (c: Circuit) => circuitAmpere(panel, c);
 
   const subR = circuits.reduce((s, c) => s + Number(c.phase_r || 0), 0);
   const subS = circuits.reduce((s, c) => s + Number(c.phase_s || 0), 0);
@@ -627,12 +616,14 @@ export default function PanelScheduleTable({
         <p className="no-print mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
           <Rich
             text={t(
-              "Klik kolom FUNCTION / BREAKER / CABLE untuk mengubah cepat, tekan Enter atau klik di luar untuk menyimpan. " +
+              "Klik kolom FUNCTION untuk mengubah cepat, tekan Enter atau klik di luar untuk menyimpan. " +
+                "Kolom **BREAKER**, **TYPE**, dan **OD** tidak bisa diedit — ketiganya dihitung dari beban circuit " +
+                "lewat BREAKER SELECTION. " +
                 "Klik **✎** di kolom NO. untuk edit lengkap (termasuk WATT, FASE, REMARKS) lewat form. " +
                 "Panah ▲▼ untuk pindah urutan, **🗑** untuk hapus baris — load manual langsung terhapus " +
                 "(nomor manual lain naik mengisi celah); circuit Revit akan di-**disconnect** dari panel saat " +
                 "Pull from Website dijalankan (Push sebelum Pull membatalkan hapusnya). " +
-                "Jalankan **Pull from Website** di Revit add-in untuk menarik FUNCTION/BREAKER/CABLE ke model — " +
+                "Jalankan **Pull from Website** di Revit add-in untuk menarik FUNCTION ke model — " +
                 "kalau tidak berubah di Revit, parameternya read-only di family tersebut. " +
                 "Hasil **Rebalance Loads** (dan fase yang dipilih di form ✎) **dikunci** — baris bertanda **🔒** " +
                 "tetap di fase itu waktu Push berikutnya dari Revit; watt-nya tetap ikut model terbaru, cuma " +
@@ -641,13 +632,15 @@ export default function PanelScheduleTable({
                 "Urutan baris (▲▼) masih tersimpan di website saja dan akan ditimpa Push. Load manual " +
                 "(badge **M**) selalu dipertahankan; nomornya otomatis bergeser ke bawah kalau bentrok dengan " +
                 "circuit Revit baru.",
-              "Click the FUNCTION / BREAKER / CABLE cells for a quick edit, press Enter or click outside to save. " +
+              "Click the FUNCTION cell for a quick edit, press Enter or click outside to save. " +
+                "The **BREAKER**, **TYPE** and **OD** columns cannot be edited — all three are derived from the " +
+                "circuit load through BREAKER SELECTION. " +
                 "Click **✎** in the NO. column for a full edit (including WATT, PHASE, REMARKS) through the form. " +
                 "Use ▲▼ to reorder and **🗑** to delete a row — manual loads are removed right away " +
                 "(the other manual numbers close the gap); Revit circuits are **disconnected** from the panel when " +
                 "Pull from Website runs (a Push before that Pull undoes the deletion). " +
-                "Run **Pull from Website** in the Revit add-in to bring FUNCTION/BREAKER/CABLE into the model — " +
-                "if nothing changes in Revit, those parameters are read-only in that family. " +
+                "Run **Pull from Website** in the Revit add-in to bring FUNCTION into the model — " +
+                "if nothing changes in Revit, that parameter is read-only in that family. " +
                 "The **Rebalance Loads** result (and the phase picked in the ✎ form) is **locked** — rows marked **🔒** " +
                 "stay on that phase through the next Push from Revit; their watt still follows the latest model, only " +
                 "the R/S/T position is kept. Use **🔓 Unlock phases** to follow the model again (a lock is also " +
@@ -674,44 +667,6 @@ export default function PanelScheduleTable({
               }
               className="rounded border border-neutral-300 px-2 py-1 text-xs"
               placeholder={t("mis. LIGHTING (L4-20)", "e.g. LIGHTING (L4-20)")}
-            />
-          </label>
-          <label className="flex flex-col text-xs text-neutral-600">
-            BREAKER TYPE
-            <select
-              value={newCircuit.breaker_type}
-              onChange={(e) =>
-                setNewCircuit((s) => ({ ...s, breaker_type: e.target.value }))
-              }
-              className="rounded border border-neutral-300 px-2 py-1 text-xs"
-            >
-              {["MCB 1P", "MCB 3P", "MCCB 3P", "RCBO 2P", "RCBO 4P"].map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col text-xs text-neutral-600">
-            RATING
-            <input
-              value={newCircuit.breaker_rating}
-              onChange={(e) =>
-                setNewCircuit((s) => ({ ...s, breaker_rating: e.target.value }))
-              }
-              className="w-16 rounded border border-neutral-300 px-2 py-1 text-xs"
-              placeholder="10A"
-            />
-          </label>
-          <label className="flex flex-col text-xs text-neutral-600">
-            CABLE
-            <input
-              value={newCircuit.outgoing_cable}
-              onChange={(e) =>
-                setNewCircuit((s) => ({ ...s, outgoing_cable: e.target.value }))
-              }
-              className="w-32 rounded border border-neutral-300 px-2 py-1 text-xs"
-              placeholder="NYM 3C x 2.5mm2"
             />
           </label>
           <label className="flex flex-col text-xs text-neutral-600">
@@ -805,11 +760,23 @@ export default function PanelScheduleTable({
               rowSpan={3}
               style={colStyle(COLUMN_WIDTH.breaker)}
               className="px-2 py-1 align-middle"
+              title={t(
+                "Jenis breaker menurut jenis bebannya, ratingnya ikut BREAKER SELECTION: lighting MCB 1P min. 10A, receptacle 1 fase RCBO 2P 30mA min. 16A, receptacle 3 fase RCCB 4P 30mA min. 16A",
+                "Breaker type follows the kind of load, its rating follows BREAKER SELECTION: lighting MCB 1P min. 10A, single-phase receptacle RCBO 2P 30mA min. 16A, three-phase receptacle RCCB 4P 30mA min. 16A"
+              )}
             >
               BREAKER
             </th>
-            <th rowSpan={3} style={colStyle(COLUMN_WIDTH.cable)} className="px-2 py-1 align-middle">
-              CABLE
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.cable)}
+              className="px-2 py-1 align-middle"
+              title={t(
+                "Jenis & ukuran kabel NYY dari katalog KMI — ukuran terkecil yang KHA-nya masih di atas rating BREAKER SELECTION, minimal 3Cx2,5mm² (lighting), 3Cx4mm² (receptacle 1 fase), 5Cx4mm² (receptacle 3 fase)",
+                "NYY cable type & size from the KMI catalogue — the smallest size whose ampacity is still above the BREAKER SELECTION rating, at least 3Cx2.5mm² (lighting), 3Cx4mm² (single-phase receptacle), 5Cx4mm² (three-phase receptacle)"
+              )}
+            >
+              TYPE
             </th>
             {cols.length > 0 && (
               <th colSpan={cols.length} className="px-2 py-1">
@@ -850,6 +817,19 @@ export default function PanelScheduleTable({
               <br />
               SELECTION
             </th>
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.od)}
+              className="px-2 py-1 align-middle"
+              title={t(
+                "Overall diameter kabel di kolom TYPE menurut katalog KMI (mm) — dipakai buat hitung cable tray/conduit",
+                "Overall diameter of the cable in the TYPE column per the KMI catalogue (mm) — used to size cable tray/conduit"
+              )}
+            >
+              OD
+              <br />
+              <span className="text-[9px] font-normal">(mm)</span>
+            </th>
           </tr>
           <tr className="bg-neutral-100">
             {cols.map((col) => (
@@ -884,14 +864,12 @@ export default function PanelScheduleTable({
         </thead>
         <tbody>
           {circuits.map((c, idx) => {
-            const breakerText = [c.breaker_type, c.breaker_rating]
-              .filter(Boolean)
-              .join(" ");
-            const amp = ampereOf(c);
+            const spec = circuitSpec(panel, c);
+            const amp = spec.ampere;
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
                 <td className="relative p-0">
-                  <MiniCircuitBranch breakerType={c.breaker_type} dim={c.is_spare} />
+                  <MiniCircuitBranch breakerType={spec.rule.breakerType} dim={c.is_spare} />
                 </td>
                 <td className="px-1 py-0.5 text-center">
                   <div className="flex items-center justify-center gap-1">
@@ -992,40 +970,21 @@ export default function PanelScheduleTable({
                     c.function_name
                   )}
                 </td>
-                <td className="px-1 py-0.5 text-center whitespace-nowrap">
-                  {editing ? (
-                    <CellInput
-                      key={`b-${c.id}-${breakerText}`}
-                      initial={breakerText}
-                      onCommit={(v) => {
-                        // "MCB 1P 20A" -> type = semua kecuali token terakhir, rating = token terakhir
-                        const parts = v.split(/\s+/).filter(Boolean);
-                        const rating =
-                          parts.length > 1 && /\d/.test(parts[parts.length - 1])
-                            ? parts.pop()!
-                            : null;
-                        updateCircuit(c.id, {
-                          breaker_type: parts.join(" ") || null,
-                          breaker_rating: rating,
-                        });
-                      }}
-                    />
-                  ) : (
-                    breakerText
-                  )}
-                </td>
-                <td className="px-1 py-0.5 text-center whitespace-nowrap">
-                  {editing ? (
-                    <CellInput
-                      key={`k-${c.id}-${c.outgoing_cable ?? ""}`}
-                      initial={c.outgoing_cable ?? ""}
-                      onCommit={(v) =>
-                        updateCircuit(c.id, { outgoing_cable: v || null })
-                      }
-                    />
-                  ) : (
-                    c.outgoing_cable
-                  )}
+                <td className="px-1 py-0.5 text-center whitespace-nowrap">{spec.breaker}</td>
+                <td
+                  className={`px-1 py-0.5 text-center whitespace-nowrap ${
+                    spec.cable?.undersized ? "font-semibold text-amber-700" : ""
+                  }`}
+                  title={
+                    spec.cable?.undersized
+                      ? t(
+                          `Arus ${spec.rating ?? ""}A melampaui KHA ukuran terbesar NYY ${spec.cable.cores}C di katalog — perlu kabel paralel/jenis lain`,
+                          `${spec.rating ?? ""}A is beyond the ampacity of the largest NYY ${spec.cable.cores}C size in the catalogue — parallel cables or another type are needed`
+                        )
+                      : undefined
+                  }
+                >
+                  {spec.cableText}
                 </td>
                 {cols.map((col) => {
                   const q = qtyOf(c, col.key);
@@ -1047,6 +1006,7 @@ export default function PanelScheduleTable({
                 <td className="px-2 py-0.5">{c.remarks ?? ""}</td>
                 <td className="px-2 py-0.5 text-right">{amp != null ? nf2.format(amp) : ""}</td>
                 <td className="px-2 py-0.5 text-center">{suggestBreakerText(amp)}</td>
+                <td className="px-2 py-0.5 text-center">{spec.odText}</td>
               </tr>
             );
           })}
@@ -1066,7 +1026,8 @@ export default function PanelScheduleTable({
               </td>
             ))}
             <td colSpan={3} className="px-2 py-1" />
-            <td colSpan={3} className="px-2 py-1" />
+            {/* REMARKS + AMPERE + BREAKER SELECTION + OD */}
+            <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1075,7 +1036,8 @@ export default function PanelScheduleTable({
             <td className="px-2 py-1 text-right">{nf.format(subR)}</td>
             <td className="px-2 py-1 text-right">{nf.format(subS)}</td>
             <td className="px-2 py-1 text-right">{nf.format(subT)}</td>
-            <td colSpan={3} className="px-2 py-1" />
+            {/* REMARKS + AMPERE + BREAKER SELECTION + OD */}
+            <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1084,7 +1046,8 @@ export default function PanelScheduleTable({
             <td colSpan={3} className="px-2 py-1 text-center">
               {nf1.format(totalWatt)}
             </td>
-            <td colSpan={3} className="px-2 py-1" />
+            {/* REMARKS + AMPERE + BREAKER SELECTION + OD */}
+            <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1093,7 +1056,8 @@ export default function PanelScheduleTable({
             <td colSpan={3} className="px-2 py-1 text-center">
               {nf1.format(totalVA)}
             </td>
-            <td colSpan={3} className="px-2 py-1" />
+            {/* REMARKS + AMPERE + BREAKER SELECTION + OD */}
+            <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
             <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
@@ -1102,7 +1066,8 @@ export default function PanelScheduleTable({
             <td colSpan={3} className="px-2 py-1 text-center">
               {nf1.format(ampere)}
             </td>
-            <td colSpan={3} className="px-2 py-1" />
+            {/* REMARKS + AMPERE + BREAKER SELECTION + OD */}
+            <td colSpan={4} className="px-2 py-1" />
           </tr>
         </tbody>
       </table>
@@ -1135,6 +1100,24 @@ export default function PanelScheduleTable({
           {t(
             `BREAKER SELECTION = rating standar terdekat yang masih di atas arus circuit (${BREAKER_RATINGS.join(", ")} A)`,
             `BREAKER SELECTION = the nearest standard rating still above the circuit current (${BREAKER_RATINGS.join(", ")} A)`
+          )}
+        </p>
+        <p>
+          {t(
+            "BREAKER = jenis breaker menurut jenis beban, ratingnya dari BREAKER SELECTION: LIGHTING → MCB 1P min. 10A; " +
+              "RECEPTACLE 1 fase → RCBO 2P 30mA min. 16A; RECEPTACLE 3 fase → RCCB 4P 30mA min. 16A",
+            "BREAKER = breaker type per kind of load, its rating from BREAKER SELECTION: LIGHTING → MCB 1P min. 10A; " +
+              "single-phase RECEPTACLE → RCBO 2P 30mA min. 16A; three-phase RECEPTACLE → RCCB 4P 30mA min. 16A"
+          )}
+        </p>
+        <p>
+          {t(
+            "TYPE & OD = kabel NYY dari katalog KMI (IEC 60502-1) — ukuran terkecil yang KHA-nya di udara masih di atas " +
+              "rating breaker, minimal LIGHTING 3Cx2,5mm², RECEPTACLE 1 fase 3Cx4mm², RECEPTACLE 3 fase 5Cx4mm². " +
+              "OD = overall diameter kabel itu (mm).",
+            "TYPE & OD = NYY cable from the KMI catalogue (IEC 60502-1) — the smallest size whose in-air ampacity is still " +
+              "above the breaker rating, at least LIGHTING 3Cx2.5mm², single-phase RECEPTACLE 3Cx4mm², three-phase " +
+              "RECEPTACLE 5Cx4mm². OD = that cable's overall diameter (mm)."
           )}
         </p>
       </div>

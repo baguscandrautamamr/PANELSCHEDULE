@@ -46,6 +46,19 @@ const hits = (text: string, parts: string[], exact: Set<string>) =>
   parts.some((p) => text.includes(p)) || words(text).some((w) => exact.has(w));
 
 /**
+ * Tebak kelompok beban dari sepotong teks (nama family/type fixture atau nama
+ * FUNCTION circuit): lighting, electrical (stop kontak), atau null kalau tidak
+ * ada petunjuk. Dipakai juga oleh lib/circuitSpec buat menentukan jenis breaker
+ * & kabel tiap circuit.
+ */
+export function textGroup(text: string): number | null {
+  const upper = text.toUpperCase();
+  if (hits(upper, LIGHTING_PARTS, LIGHTING_WORDS)) return FIXTURE_GROUP.lighting;
+  if (hits(upper, ELECTRICAL_PARTS, ELECTRICAL_WORDS)) return FIXTURE_GROUP.electrical;
+  return null;
+}
+
+/**
  * Kelompok satu kolom fixture.
  *
  * Sumber paling bisa dipercaya adalah FUNCTION circuit-nya: add-in menyusunnya
@@ -68,10 +81,7 @@ export function fixtureGroup(
   }
   if (lighting !== electrical) return lighting ? FIXTURE_GROUP.lighting : FIXTURE_GROUP.electrical;
 
-  const text = `${col.type} ${col.label ?? ""}`.toUpperCase();
-  if (hits(text, LIGHTING_PARTS, LIGHTING_WORDS)) return FIXTURE_GROUP.lighting;
-  if (hits(text, ELECTRICAL_PARTS, ELECTRICAL_WORDS)) return FIXTURE_GROUP.electrical;
-  return FIXTURE_GROUP.other;
+  return textGroup(`${col.type} ${col.label ?? ""}`) ?? FIXTURE_GROUP.other;
 }
 
 /**

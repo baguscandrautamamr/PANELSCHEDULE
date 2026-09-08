@@ -91,12 +91,37 @@ npm run dev   # http://localhost:3000
     ampere circuit — `10, 16, 20, 25, 35, 40, 50, 63, 80, 100, 125, 160, 200 A`.
     Di atas 200 A ditulis `> 200A` (perlu breaker khusus, tidak ditebak).
     Sifatnya usulan ukuran; tetap perlu dicek terhadap KHA kabel & jenis beban.
+  - kolom **BREAKER**: jenis breaker menurut jenis bebannya, **ratingnya ikut
+    BREAKER SELECTION** (data breaker dari Revit tidak dipakai lagi):
+
+    | Beban | Breaker | Rating minimum |
+    | --- | --- | --- |
+    | LIGHTING | `MCB 1P` | 10 A |
+    | RECEPTACLE 1 fase | `RCBO 2P … 30mA` | 16 A |
+    | RECEPTACLE 3 fase | `RCCB 4P … 30mA` | 16 A |
+    | beban lain 1 fase | `MCB 1P` | 10 A |
+    | beban lain 3 fase | `MCB 3P` | 10 A |
+
+    Jenis beban dibaca dari nama FUNCTION (`LIGHTING (D)/4`,
+    `RECEPTACLE (D)/42` — disusun add-in dari kategori Revit); kalau tidak ada
+    petunjuk di situ, dari nama family/type fixture yang dipakai circuit itu.
+    Circuit campuran lighting + stop kontak dihitung receptacle.
+  - kolom **TYPE** & **OD**: kabel NYY dari katalog **PT KMI Wire and Cable**
+    (IEC 60502-1, 0,6/1 kV — lembar 3C/4C/5C). Yang dipilih ukuran **terkecil
+    yang KHA-nya di udara (30 °C) masih di atas rating breaker** (Iz ≥ In) dan
+    tidak lebih kecil dari minimum jenis bebannya: LIGHTING `NYY 3C x 2.5mm2`,
+    RECEPTACLE 1 fase `NYY 3C x 4mm2`, RECEPTACLE 3 fase `NYY 5C x 4mm2`
+    (beban lain: 1 fase `NYY 3C`, 3 fase `NYY 4C`, minimum 2,5 mm²). Jadi
+    breaker yang jatuh di bawah minimum tetap memakai kabel minimum itu.
+    **OD** = overall diameter kabel terpilih (mm) menurut katalog yang sama —
+    kotaknya di sebelah BREAKER SELECTION, dipakai buat hitung cable
+    tray/conduit. Baris SPARE tidak dapat kabel (TYPE & OD kosong).
   - summary: total qty per fixture, SUB TOTAL R/S/T, TOTAL WATT,
     TOTAL VA (`watt / cos φ`), CONNECTED AMPERE (`VA / (√3 × V L-L)` untuk 3PH;
     voltage `220/380V` dari Revit → yang dipakai V L-L = 380)
 - **SLD dinamis (SVG)** dari data yang sama: source panel → incoming cable →
   main breaker → fuse + lampu R/Y/B → bus → breaker per circuit
-  (MCB 1P/3P, MCCB 3P, RCBO 2P/4P dibedakan simbolnya)
+  (MCB 1P/3P, MCCB 3P, RCBO 2P / RCCB 4P dibedakan simbolnya)
 - Update di Supabase langsung muncul di web (Supabase Realtime)
 - **Rebalance Loads + kunci fase** (badge **🔒R/S/T** di kolom NO.): tombol
   ⇅ Rebalance Loads membagi ulang circuit 1 fase ke R/S/T yang totalnya paling
@@ -136,10 +161,12 @@ npm run dev   # http://localhost:3000
     watt-nya sudah lengkap tapi hasilnya tetap tidak sama dengan angka Revit —
     mis. bebannya bukan dari fixture di tabel ini; jumlah baris seperti itu
     dicatat di bawah tabel.
-  - kolom **AMPERE** & **BREAKER SELECTION** ikut diexport, dua-duanya sebagai
-    formula: ampere mengacu ke sel `cos φ` / `V (L-L)` / `V (L-N)`, dan breaker
-    selection memakai `IF` bertingkat atas sel ampere-nya — jadi ikut berubah
-    kalau watt/unit, cos φ, atau tegangan diedit di Excel.
+  - kolom **AMPERE**, **BREAKER SELECTION**, **BREAKER**, **TYPE**, dan **OD**
+    ikut diexport, semuanya sebagai formula: ampere mengacu ke sel `cos φ` /
+    `V (L-L)` / `V (L-N)`, sedangkan keempat kolom lainnya `IF` bertingkat atas
+    sel ampere-nya — jadi breaker, jenis kabel, dan diameternya ikut berubah
+    kalau watt/unit, cos φ, atau tegangan diedit di Excel. OD ditulis sebagai
+    angka (bukan teks) supaya bisa langsung dipakai hitung cable tray.
   - `SUM` per kolom fase, `TOTAL VA = TOTAL WATT / cos φ`,
     `CONNECTED AMPERE = TOTAL VA / (√3 × V)`
   - **sel input berwarna kuning** (`cos φ`, tegangan, baris `WATT / UNIT`) —
@@ -147,7 +174,7 @@ npm run dev   # http://localhost:3000
 - **Export CAD (DXF)**: satu file DXF R12 berisi SLD + tabel schedule lengkap,
   skala **1:1 dalam milimeter**, siap dibuka di AutoCAD / BricsCAD / DraftSight /
   LibreCAD atau di-import ke Revit. Simbol breaker jadi **block** (`BRK_MCB_1P`,
-  `BRK_MCCB_3P`, `BRK_RCBO_2P`, … sesuai jenis + jumlah pole yang benar-benar
+  `BRK_MCCB_3P`, `BRK_RCD_2P`, … sesuai jenis + jumlah pole yang benar-benar
   dipakai) supaya bisa diganti/dihitung massal di CAD, dan tiap jenis garis
   punya layer sendiri: `PS-SLD`, `PS-BREAKER`, `PS-TABLE-GRID`, `PS-TEXT`,
   `PS-SUMMARY`, `PS-TITLE`, `PS-FRAME`.

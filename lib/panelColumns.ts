@@ -19,6 +19,7 @@ export const COLUMN_WIDTH = {
   no: { px: 44, maxPx: 44 },
   function: { px: 208, maxPx: 320 },
   breaker: { px: 96, maxPx: 160 },
+  /** kolom TYPE — jenis & ukuran kabel hasil pemilihan dari katalog NYY */
   cable: { px: 112, maxPx: 240 },
   /** tetap: judulnya turun baris, kolomnya tidak melebar */
   fixture: { px: 112, maxPx: 112 },
@@ -26,6 +27,8 @@ export const COLUMN_WIDTH = {
   remarks: { px: 128, maxPx: 240 },
   ampere: { px: 72, maxPx: 96 },
   breakerPick: { px: 88, maxPx: 112 },
+  /** overall diameter kabel (mm) dari katalog */
+  od: { px: 64, maxPx: 88 },
 } satisfies Record<string, ColumnWidth>;
 
 /** px CSS (96 dpi) -> milimeter, buat gambar DXF skala 1:1. */

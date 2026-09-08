@@ -3,7 +3,6 @@ import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import {
   BREAKER_RATINGS,
-  circuitAmpere,
   energizedPhases,
   is3Phase,
   panelPowerFactor,
@@ -12,6 +11,14 @@ import {
   suggestBreakerText,
 } from "./panelCalc";
 import { solveFixtureWatts } from "./fixtureWatt";
+import {
+  allowedRatings,
+  breakerText as breakerTextOf,
+  circuitSpec,
+  ruleCable,
+  type CircuitRule,
+} from "./circuitSpec";
+import { cableText } from "./cableCatalog";
 import { COLUMN_WIDTH, pxToExcelWidth, type ColumnWidth } from "./panelColumns";
 import { makeT, type Lang } from "./i18n";
 
@@ -149,15 +156,16 @@ export async function exportPanelToExcel(
   const C_REMARKS = C_R + 3;
   const C_AMP = C_REMARKS + 1;
   const C_BRK_PICK = C_AMP + 1;
-  const nCols = C_BRK_PICK;
+  const C_OD = C_BRK_PICK + 1;
+  const nCols = C_OD;
 
   const qtyOf = (c: Circuit, key: string) =>
     (c.circuit_fixtures ?? [])
       .filter((f) => fixtureKey(f) === key)
       .reduce((s, f) => s + f.quantity, 0);
 
-  const breakerText = (c: Circuit) =>
-    [c.breaker_type, c.breaker_rating].filter(Boolean).join(" ");
+  /** Breaker, kabel, dan OD tiap circuit — diturunkan dari arus circuit. */
+  const specs = new Map(circuits.map((c) => [c.id, circuitSpec(panel, c)]));
 
   // Watt/unit tiap kolom FIXTURE: dari parameter Revit kalau ada, kalau tidak
   // dihitung balik dari demand load circuit (lihat lib/fixtureWatt).
@@ -170,8 +178,8 @@ export async function exportPanelToExcel(
     "FUNCTION",
   ]);
   const wCable = colWidth(COLUMN_WIDTH.cable, [
-    ...circuits.map((c) => c.outgoing_cable),
-    "CABLE",
+    ...circuits.map((c) => specs.get(c.id)!.cableText),
+    "TYPE",
   ]);
   const wRemarks = colWidth(COLUMN_WIDTH.remarks, [
     ...circuits.map((c) => c.remarks),
@@ -182,7 +190,7 @@ export async function exportPanelToExcel(
   ws.getColumn(C_NO).width = colWidth(COLUMN_WIDTH.no);
   ws.getColumn(C_FUNC).width = wFunc;
   ws.getColumn(C_BRK).width = colWidth(COLUMN_WIDTH.breaker, [
-    ...circuits.map(breakerText),
+    ...circuits.map((c) => specs.get(c.id)!.breaker),
     "BREAKER",
   ]);
   ws.getColumn(C_CABLE).width = wCable;
@@ -200,6 +208,7 @@ export async function exportPanelToExcel(
   ws.getColumn(C_REMARKS).width = wRemarks;
   ws.getColumn(C_AMP).width = colWidth(COLUMN_WIDTH.ampere, ["AMPERE"]);
   ws.getColumn(C_BRK_PICK).width = colWidth(COLUMN_WIDTH.breakerPick, ["SELECTION"]);
+  ws.getColumn(C_OD).width = colWidth(COLUMN_WIDTH.od, ["OD (mm)"]);
   // ExcelJS tidak ikut menulis lebar kolom yang nilainya persis 9 (dianggap
   // default-nya sendiri), sedangkan default Excel 8.43 — jadi default sheet-nya
   // di-set 9 supaya kolom seperti itu tetap selebar yang dihitung di sini.
@@ -289,10 +298,11 @@ export async function exportPanelToExcel(
   put(headTop, C_NO, "NO.");
   put(headTop, C_FUNC, "FUNCTION");
   put(headTop, C_BRK, "BREAKER");
-  put(headTop, C_CABLE, "CABLE");
+  put(headTop, C_CABLE, "TYPE");
   put(headTop, C_REMARKS, "REMARKS");
   put(headTop, C_AMP, "AMPERE");
   put(headTop, C_BRK_PICK, "BREAKER\nSELECTION");
+  put(headTop, C_OD, "OD\n(mm)");
 
   if (nFix > 0) {
     put(headTop, C_FIX0, "FIXTURE");
@@ -322,7 +332,7 @@ export async function exportPanelToExcel(
 
   // Semua sel di rentang merge ikut di-style di loop atas (bukan cuma sel
   // master), supaya kotak hasil merge punya garis lengkap di keempat sisinya.
-  for (const c of [C_NO, C_FUNC, C_BRK, C_CABLE, C_REMARKS, C_AMP, C_BRK_PICK]) {
+  for (const c of [C_NO, C_FUNC, C_BRK, C_CABLE, C_REMARKS, C_AMP, C_BRK_PICK, C_OD]) {
     ws.mergeCells(headTop, c, headBottom, c);
   }
   if (nFix > 0) ws.mergeCells(headTop, C_FIX0, headTop, C_FIX0 + nFix - 1);
@@ -349,6 +359,30 @@ export async function exportPanelToExcel(
    * Sengaja tidak memakai formula array/LOOKUP supaya jalan di Excel versi apa
    * pun dan gampang dibaca waktu selnya diklik.
    */
+  /**
+   * IF bertingkat yang memetakan arus di `ampRef` ke nilai yang berlaku untuk
+   * rating breaker circuit itu — dipakai kolom BREAKER, TYPE, dan OD supaya
+   * ketiganya ikut berubah kalau watt/cos phi/tegangan diedit di Excel, persis
+   * seperti kolom BREAKER SELECTION. Rating di bawah minimum jenis bebannya
+   * sudah dibuang dari daftar, jadi arus kecil otomatis jatuh ke minimum.
+   */
+  const ruleFormula = (
+    ampRef: string,
+    rule: CircuitRule,
+    valueOf: (rating: number | null) => string | number
+  ) => {
+    const lit = (v: string | number) => (typeof v === "number" ? String(v) : `"${v}"`);
+    const ratings = allowedRatings(rule);
+    const chain = [...ratings]
+      .reverse()
+      .reduce(
+        (inner, rating) => `IF(${ampRef}<=${rating},${lit(valueOf(rating))},${inner})`,
+        lit(valueOf(null))
+      );
+    // circuit tanpa beban tetap dapat breaker/kabel minimum
+    return `IF(${ampRef}="",${lit(valueOf(ratings[0]))},${chain})`;
+  };
+
   const breakerFormula = (ampRef: string) => {
     const max = BREAKER_RATINGS[BREAKER_RATINGS.length - 1];
     const chain = [...BREAKER_RATINGS]
@@ -412,8 +446,32 @@ export async function exportPanelToExcel(
     const row = ws.getRow(r);
     row.getCell(C_NO).value = c.circuit_no;
     row.getCell(C_FUNC).value = c.function_name;
-    row.getCell(C_BRK).value = breakerText(c);
-    row.getCell(C_CABLE).value = c.outgoing_cable ?? "";
+    const spec = specs.get(c.id)!;
+    const rule = spec.rule;
+    const ampRef = `${L(C_AMP)}${r}`;
+    row.getCell(C_BRK).value = {
+      formula: ruleFormula(ampRef, rule, (rating) => breakerTextOf(rule, rating)),
+      result: spec.breaker,
+    };
+    // SPARE belum punya kabel keluar — kolom TYPE & OD-nya dikosongkan
+    row.getCell(C_CABLE).value = c.is_spare
+      ? ""
+      : {
+          formula: ruleFormula(ampRef, rule, (rating) =>
+            rating == null ? "" : cableText(rule.cores, ruleCable(rule, rating).size)
+          ),
+          result: spec.cableText,
+        };
+    // OD ditulis sebagai ANGKA (bukan teks) supaya bisa langsung dipakai
+    // hitung cable tray/conduit di Excel
+    row.getCell(C_OD).value = c.is_spare
+      ? ""
+      : {
+          formula: ruleFormula(ampRef, rule, (rating) =>
+            rating == null ? "" : ruleCable(rule, rating).od
+          ),
+          result: spec.cable?.od ?? "",
+        };
     cols.forEach((col, i) => {
       row.getCell(C_FIX0 + i).value = qtyOf(c, col.key) || null;
     });
@@ -484,7 +542,7 @@ export async function exportPanelToExcel(
 
     // AMPERE per circuit — formula, jadi ikut berubah kalau watt/unit, cos phi,
     // atau tegangan di sel kuning diedit.
-    const amp = circuitAmpere(panel, c);
+    const amp = spec.ampere;
     const sumRST = `SUM(${L(C_R)}${r}:${L(C_R + 2)}${r})`;
     const livePhases = is3ph ? energizedPhases(c) : 1;
     const ampFormula =
@@ -516,13 +574,14 @@ export async function exportPanelToExcel(
             ? "center"
             : (col >= C_R && col < C_REMARKS) || col === C_AMP
               ? "right"
-              : col === C_BRK || col === C_BRK_PICK
+              : col === C_BRK || col === C_BRK_PICK || col === C_OD
                 ? "center"
                 : "left",
         wrapText: wrap,
       };
       if (col >= C_R && col < C_REMARKS) cell.numFmt = "#,##0.#";
       if (col === C_AMP) cell.numFmt = "#,##0.00";
+      if (col === C_OD) cell.numFmt = "#,##0.0";
       if (col >= C_FIX0 && col < C_R) cell.numFmt = "#,##0";
     }
   }
@@ -708,6 +767,23 @@ export async function exportPanelToExcel(
     t(
       `BREAKER SELECTION = rating standar terdekat yang masih di ATAS AMPERE circuit (${BREAKER_RATINGS.join(", ")} A) — ikut berubah kalau ampere-nya berubah. Ini usulan ukuran breaker, tetap perlu dicek terhadap KHA kabel & jenis bebannya.`,
       `BREAKER SELECTION = the nearest standard rating still ABOVE the circuit AMPERE (${BREAKER_RATINGS.join(", ")} A) — it follows any change in the ampere. Treat it as a suggested size; still check it against the cable ampacity and the type of load.`
+    ),
+    t(
+      "BREAKER = jenis breaker menurut jenis bebannya + rating dari BREAKER SELECTION: LIGHTING MCB 1P minimum 10A; " +
+        "RECEPTACLE 1 fase RCBO 2P 30mA minimum 16A; RECEPTACLE 3 fase RCCB 4P 30mA minimum 16A. Ditulis sebagai formula, " +
+        "jadi ikut berubah kalau ampere-nya berubah.",
+      "BREAKER = the breaker type for that kind of load + the rating from BREAKER SELECTION: LIGHTING MCB 1P minimum 10A; " +
+        "single-phase RECEPTACLE RCBO 2P 30mA minimum 16A; three-phase RECEPTACLE RCCB 4P 30mA minimum 16A. It is written " +
+        "as a formula, so it follows any change in the ampere."
+    ),
+    t(
+      "TYPE & OD = kabel NYY katalog PT KMI Wire and Cable (IEC 60502-1, 0,6/1 kV) — ukuran terkecil yang KHA-nya di udara " +
+        "(30 °C) masih di atas rating breaker, minimum LIGHTING NYY 3C x 2.5mm2, RECEPTACLE 1 fase NYY 3C x 4mm2, " +
+        "RECEPTACLE 3 fase NYY 5C x 4mm2. OD = overall diameter kabel itu (mm) dari katalog yang sama.",
+      "TYPE & OD = NYY cable from the PT KMI Wire and Cable catalogue (IEC 60502-1, 0.6/1 kV) — the smallest size whose " +
+        "in-air ampacity (30 °C) is still above the breaker rating, at least LIGHTING NYY 3C x 2.5mm2, single-phase " +
+        "RECEPTACLE NYY 3C x 4mm2, three-phase RECEPTACLE NYY 5C x 4mm2. OD = that cable's overall diameter (mm) from the " +
+        "same catalogue."
     ),
     t(
       `Sel berwarna kuning (cos phi ${cellRef(C_BRK, rPf)}, tegangan ${cellRef(C_BRK, rVolt)}${
