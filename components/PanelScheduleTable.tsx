@@ -1098,8 +1098,8 @@ export default function PanelScheduleTable({
         </p>
         <p>
           {t(
-            `BREAKER SELECTION = rating standar terdekat yang masih di atas arus circuit (${BREAKER_RATINGS.join(", ")} A)`,
-            `BREAKER SELECTION = the nearest standard rating still above the circuit current (${BREAKER_RATINGS.join(", ")} A)`
+            `BREAKER SELECTION = rating standar terdekat yang masih di atas arus circuit + 20% (x1,2) (${BREAKER_RATINGS.join(", ")} A)`,
+            `BREAKER SELECTION = the nearest standard rating still above the circuit current + 20% (x1.2) (${BREAKER_RATINGS.join(", ")} A)`
           )}
         </p>
         <p>

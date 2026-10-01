@@ -526,8 +526,8 @@ export function exportPanelToDxf(
       is3ph ? `; / (${pf} x 1.732 x ${volt}) ${t("untuk 3 fase", "for three-phase")}` : ""
     }`,
     t(
-      `BREAKER SELECTION = rating standar terdekat di atas ampere circuit (${BREAKER_RATINGS.join(", ")} A)`,
-      `BREAKER SELECTION = nearest standard rating above the circuit ampere (${BREAKER_RATINGS.join(", ")} A)`
+      `BREAKER SELECTION = rating standar terdekat di atas ampere circuit + 20% (x1,2) (${BREAKER_RATINGS.join(", ")} A)`,
+      `BREAKER SELECTION = nearest standard rating above the circuit ampere + 20% (x1.2) (${BREAKER_RATINGS.join(", ")} A)`
     ),
     t(
       "BREAKER = LIGHTING MCB 1P min. 10A; RECEPTACLE 1 fase RCBO 2P 30mA min. 16A; RECEPTACLE 3 fase RCCB 4P 30mA min. 16A - rating ikut BREAKER SELECTION",
