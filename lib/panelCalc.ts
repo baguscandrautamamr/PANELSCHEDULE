@@ -108,14 +108,17 @@ export function circuitAmpere(panel: Panel, c: PhaseLoads): number | null {
  */
 export const BREAKER_RATINGS = [10, 16, 20, 25, 35, 40, 50, 63, 80, 100, 125, 160, 200];
 
+/** Faktor cadangan breaker: arus circuit ditambah 20% sebelum dicocokkan ke rating. */
+export const BREAKER_MARGIN = 1.2;
+
 /**
- * Rating breaker terdekat yang masih di ATAS arus circuit — breaker tidak boleh
- * lebih kecil dari bebannya. null kalau tidak berbeban atau arusnya melampaui
+ * Rating breaker terdekat yang masih di ATAS arus circuit + 20% (x1,2) — breaker
+ * tidak boleh lebih kecil dari bebannya. null kalau tidak berbeban atau arusnya melampaui
  * rating terbesar di daftar (perlu breaker khusus, jangan ditebak).
  */
 export function suggestBreaker(ampere: number | null): number | null {
   if (ampere == null || ampere <= 0) return null;
-  return BREAKER_RATINGS.find((r) => r >= ampere) ?? null;
+  return BREAKER_RATINGS.find((r) => r >= ampere * BREAKER_MARGIN) ?? null;
 }
 
 /** Teks kolom breaker selection: "16A", "> 200A", atau kosong. */

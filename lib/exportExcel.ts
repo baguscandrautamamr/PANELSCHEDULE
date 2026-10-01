@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import type { Circuit, Panel } from "./types";
 import { fixtureKey } from "./types";
 import {
+  BREAKER_MARGIN,
   BREAKER_RATINGS,
   energizedPhases,
   is3Phase,
@@ -376,7 +377,7 @@ export async function exportPanelToExcel(
     const chain = [...ratings]
       .reverse()
       .reduce(
-        (inner, rating) => `IF(${ampRef}<=${rating},${lit(valueOf(rating))},${inner})`,
+        (inner, rating) => `IF(${ampRef}*${BREAKER_MARGIN}<=${rating},${lit(valueOf(rating))},${inner})`,
         lit(valueOf(null))
       );
     // circuit tanpa beban tetap dapat breaker/kabel minimum
@@ -387,7 +388,7 @@ export async function exportPanelToExcel(
     const max = BREAKER_RATINGS[BREAKER_RATINGS.length - 1];
     const chain = [...BREAKER_RATINGS]
       .reverse()
-      .reduce((inner, rating) => `IF(${ampRef}<=${rating},"${rating}A",${inner})`, `"> ${max}A"`);
+      .reduce((inner, rating) => `IF(${ampRef}*${BREAKER_MARGIN}<=${rating},"${rating}A",${inner})`, `"> ${max}A"`);
     return `IF(${ampRef}="","",${chain})`;
   };
 
@@ -765,8 +766,8 @@ export async function exportPanelToExcel(
       }`
     ),
     t(
-      `BREAKER SELECTION = rating standar terdekat yang masih di ATAS AMPERE circuit (${BREAKER_RATINGS.join(", ")} A) — ikut berubah kalau ampere-nya berubah. Ini usulan ukuran breaker, tetap perlu dicek terhadap KHA kabel & jenis bebannya.`,
-      `BREAKER SELECTION = the nearest standard rating still ABOVE the circuit AMPERE (${BREAKER_RATINGS.join(", ")} A) — it follows any change in the ampere. Treat it as a suggested size; still check it against the cable ampacity and the type of load.`
+      `BREAKER SELECTION = rating standar terdekat yang masih di ATAS AMPERE circuit + 20% (x1,2) (${BREAKER_RATINGS.join(", ")} A) — ikut berubah kalau ampere-nya berubah. Ini usulan ukuran breaker, tetap perlu dicek terhadap KHA kabel & jenis bebannya.`,
+      `BREAKER SELECTION = the nearest standard rating still ABOVE the circuit AMPERE + 20% (x1.2) (${BREAKER_RATINGS.join(", ")} A) — it follows any change in the ampere. Treat it as a suggested size; still check it against the cable ampacity and the type of load.`
     ),
     t(
       "BREAKER = jenis breaker menurut jenis bebannya + rating dari BREAKER SELECTION: LIGHTING MCB 1P minimum 10A; " +
