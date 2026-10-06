@@ -72,6 +72,8 @@ const BUS_TOP = -71863;
 const NO_X = 96299;
 const BRK_X = 96882;
 const BRK_TEXT_X = 99885;
+/** jarak ujung kanan simbol RCBO/RCCB ke awal teks breaker */
+const RCD_TEXT_GAP = 800;
 const CABLE_TEXT_X = 104148;
 const TABLE_LEFT = 105993;
 const TABLE_TOP = -69947;
@@ -558,8 +560,13 @@ export function exportPanelToDxf(
 
     d.layer(L.text);
     d.text(String(c.circuit_no), NO_X, y + 125, TXT, { vAlign: 0 });
-    const brkX = style.kind === "RCD" ? BRK_TEXT_X + 200 : BRK_TEXT_X;
-    d.text(spec.breaker, brkX, y + 142, TXT, { align: "center", vAlign: 0 });
+    if (style.kind === "RCD") {
+      // RCBO/RCCB: simbolnya panjang, teks rata kiri dengan jarak tetap dari
+      // ujung simbol supaya tidak menempel (seperti gambar template yang dirapikan)
+      d.text(spec.breaker, BRK_X + blockLen(style) + RCD_TEXT_GAP, y + 142, TXT, { vAlign: 0 });
+    } else {
+      d.text(spec.breaker, BRK_TEXT_X, y + 142, TXT, { align: "center", vAlign: 0 });
+    }
     if (spec.cableText) {
       d.text(spec.cableText, CABLE_TEXT_X, y + 131, TXT, { align: "center", vAlign: 0 });
     }
