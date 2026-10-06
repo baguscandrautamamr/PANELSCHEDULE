@@ -8,6 +8,9 @@
 
 export type Pt = [number, number];
 
+/** Text style yang dipakai semua TEXT — sama dengan template gambar proyek. */
+const TEXT_STYLE = "TX-AN";
+
 /** DXF R12 murni ASCII — karakter lain ditransliterasi supaya file tidak rusak. */
 const TRANSLIT: Record<string, string> = {
   "φ": "phi",
@@ -190,7 +193,7 @@ export class DxfBuilder {
         g(30, num(0)) +
         g(40, num(height)) +
         g(1, clean) +
-        g(7, "STANDARD") +
+        g(7, TEXT_STYLE) +
         g(72, hCode) +
         // titik 11/21 yang dipakai kalau 72/73 != 0 — selalu diisi sama
         g(11, num(at[0])) +
@@ -269,21 +272,26 @@ export class DxfBuilder {
     }
     out += g(0, "ENDTAB");
 
-    // STYLE — beberapa reader menolak TEXT tanpa text style terdaftar
-    out +=
-      g(0, "TABLE") +
-      g(2, "STYLE") +
-      g(70, 1) +
+    // STYLE — STANDARD + TX-AN (Arial Narrow), text style template gambar
+    // proyek. Semua TEXT memakai TX-AN supaya lebar huruf sama dengan DWG
+    // template dan karakter seperti "²" punya glyph (txt.shx tidak punya).
+    const style = (name: string, font: string) =>
       g(0, "STYLE") +
-      g(2, "STANDARD") +
+      g(2, name) +
       g(70, 0) +
       g(40, num(0)) +
       g(41, num(1)) +
       g(50, num(0)) +
       g(71, 0) +
       g(42, num(2.5)) +
-      g(3, "txt") +
-      g(4, "") +
+      g(3, font) +
+      g(4, "");
+    out +=
+      g(0, "TABLE") +
+      g(2, "STYLE") +
+      g(70, 2) +
+      style("STANDARD", "arial.ttf") +
+      style(TEXT_STYLE, "ARIALN.TTF") +
       g(0, "ENDTAB");
 
     return out + g(0, "ENDSEC");
@@ -301,6 +309,10 @@ export class DxfBuilder {
       g(2, "HEADER") +
       g(9, "$ACADVER") +
       g(1, "AC1009") +
+      g(9, "$DWGCODEPAGE") +
+      g(3, "ANSI_1252") +
+      g(9, "$TEXTSTYLE") +
+      g(7, TEXT_STYLE) +
       g(9, "$EXTMIN") +
       g(10, num(minX)) +
       g(20, num(minY)) +
