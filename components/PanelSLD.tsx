@@ -10,12 +10,12 @@ import { mainBreakerSpec } from "@/lib/circuitSpec";
  * dengan baris circuit 1-6 seperti di drawing.
  *
  * Koordinat SVG = satuan template DWG (lib/exportDxf), y dibalik.
- * Lebar = jarak kabel incoming ke bus (89400 .. 96052), skala 0,04 px/unit.
+ * Lebar = jarak kabel incoming ke bus (88900 .. 96052), skala 0,05 px/unit.
  */
-const X0 = 89400;
+const X0 = 88900;
 const BUS_X = 96052;
 const Y0 = 71950; // sedikit di atas baris circuit pertama (y template dibalik)
-const K = 0.04;
+const K = 0.05;
 const MAIN_Y = 75629;
 const FEED_X = 89715;
 export const INCOMING_WIDTH = Math.round((BUS_X - X0) * K);
@@ -41,7 +41,7 @@ export default function PanelSLD({ panel, circuits }: { panel: Panel; circuits: 
   return (
     <div
       className="relative h-full text-blue-800"
-      style={{ width: INCOMING_WIDTH, minHeight: 360 }}
+      style={{ width: INCOMING_WIDTH, minHeight: 450 }}
       aria-label={`Single line diagram incoming ${panel.panel_code}`}
     >
       <svg
@@ -50,7 +50,7 @@ export default function PanelSLD({ panel, circuits }: { panel: Panel; circuits: 
         height={svgH * K}
         className="absolute left-0 top-0"
       >
-        <g stroke="#262626" strokeWidth={22} fill="none">
+        <g stroke="#262626" strokeWidth={20} fill="none">
           {/* garis utama: kabel incoming -> main breaker -> bus */}
           <line x1={FEED_X} y1={MAIN_Y} x2={brk} y2={MAIN_Y} />
           <circle cx={90630} cy={MAIN_Y} r={100} />
@@ -109,30 +109,30 @@ export default function PanelSLD({ panel, circuits }: { panel: Panel; circuits: 
         </g>
 
         <g fill="currentColor" fontFamily="Arial, sans-serif">
-          <text x={93982} y={72700} fontSize={200} textAnchor="middle">V</text>
-          <text x={93944} y={72330} fontSize={200} textAnchor="middle">0~400V</text>
-          <text x={94408} y={73089} fontSize={200}>VSS</text>
-          <text x={95089} y={72404} fontSize={200}>PT</text>
+          <text x={93982} y={72700} fontSize={230} textAnchor="middle">V</text>
+          <text x={93944} y={72330} fontSize={230} textAnchor="middle">0~400V</text>
+          <text x={94408} y={73089} fontSize={230}>VSS</text>
+          <text x={95089} y={72404} fontSize={230}>PT</text>
           {main.ct && (
             <>
-              <text x={93982} y={74636} fontSize={200} textAnchor="middle">A</text>
-              <text x={93944} y={74266} fontSize={200} textAnchor="middle">{main.ammeter}</text>
-              <text x={94408} y={75030} fontSize={200}>ASS</text>
-              <text x={95516} y={76120} fontSize={200} textAnchor="middle">CT</text>
-              <text x={95516} y={76400} fontSize={200} textAnchor="middle">{main.ct}</text>
+              <text x={93982} y={74636} fontSize={230} textAnchor="middle">A</text>
+              <text x={93944} y={74266} fontSize={230} textAnchor="middle">{main.ammeter}</text>
+              <text x={94408} y={75030} fontSize={230}>ASS</text>
+              <text x={95516} y={76120} fontSize={230} textAnchor="middle">CT</text>
+              <text x={95516} y={76400} fontSize={230} textAnchor="middle">{main.ct}</text>
             </>
           )}
-          <text x={92551} y={74540} fontSize={250} textAnchor="end">
+          <text x={92551} y={74540} fontSize={280} textAnchor="end">
             {panel.fuse_rating ?? "F 2A"}
           </text>
           {(["R", "Y", "B"] as const).map((l, i) => (
-            <text key={l} x={91415 + i * 526} y={72990} fontSize={250} textAnchor="middle">
+            <text key={l} x={91415 + i * 526} y={72990} fontSize={280} textAnchor="middle">
               {l}
             </text>
           ))}
-          <text x={93466} y={77165} fontSize={250}>SA</text>
-          <text x={91686} y={76130} fontSize={250} textAnchor="middle">{main.type}</text>
-          <text x={91686} y={76600} fontSize={250} textAnchor="middle">
+          <text x={93466} y={77165} fontSize={280}>SA</text>
+          <text x={91686} y={76130} fontSize={280} textAnchor="middle">{main.type}</text>
+          <text x={91686} y={76600} fontSize={280} textAnchor="middle">
             {main.rating != null ? `${main.rating}A` : main.breaker}
           </text>
         </g>
@@ -141,13 +141,13 @@ export default function PanelSLD({ panel, circuits }: { panel: Panel; circuits: 
       {/* kabel incoming turun sampai bawah sel, teksnya vertikal di sampingnya */}
       <div
         className="absolute w-px bg-neutral-800"
-        style={{ left: feedPx, top: mainPx, bottom: 56 }}
+        style={{ left: feedPx, top: mainPx, bottom: 52 }}
       />
       {main.cable && (
         <div
-          className="absolute whitespace-nowrap text-[10px] leading-none"
+          className="absolute whitespace-nowrap text-[12px] leading-none"
           style={{
-            left: feedPx - 12,
+            left: feedPx - 15,
             bottom: 64,
             writingMode: "vertical-rl",
             transform: "rotate(180deg)",
@@ -156,20 +156,28 @@ export default function PanelSLD({ panel, circuits }: { panel: Panel; circuits: 
           {main.cable}
         </div>
       )}
-      {panel.source_panel && (
-        <div
-          className="absolute bottom-1 text-center text-[10px] leading-tight"
-          style={{ left: 0, width: feedPx * 2 + 40, marginLeft: -20 + 0 }}
-        >
-          FROM
-          <br />
-          {panel.source_panel.replace(/^FROM\s+/i, "")}
-        </div>
-      )}
+      {/* ujung kabel incoming (~) + sumbernya, seperti template */}
+      <svg
+        width={24}
+        height={10}
+        className="absolute"
+        style={{ left: feedPx - 12, bottom: 48 }}
+        viewBox="0 0 24 10"
+      >
+        <path d="M0 3 Q6 9 12 3 Q18 -3 24 3" stroke="#262626" fill="none" strokeWidth={1} />
+      </svg>
+      <div
+        className="absolute bottom-1 whitespace-nowrap text-center text-[12px] leading-tight"
+        style={{ left: feedPx, transform: "translateX(-50%)" }}
+      >
+        FROM
+        <br />
+        {panel.source_panel ? panel.source_panel.replace(/^FROM\s+/i, "") : "-"}
+      </div>
 
       {/* rating panel di ujung bawah bus */}
       <div
-        className="absolute bottom-2 right-1 whitespace-nowrap text-[10px] leading-tight"
+        className="absolute bottom-2 right-1 whitespace-nowrap text-[12px] leading-tight"
         style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
       >
         {rating},

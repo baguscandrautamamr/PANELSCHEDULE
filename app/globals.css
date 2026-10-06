@@ -10,12 +10,15 @@ body {
   border: 1px solid #444;
 }
 
-/* sisi SLD (bus, NO., BREAKER) tanpa garis vertikal — seperti template gambar,
-   tiap circuit cuma garis feeder horizontal sampai kolom TYPE */
-.sched-table td.sld-side,
-.sched-table th.sld-side {
-  border-color: transparent;
+/* sisi SLD: teks biru seperti template gambar; garis tabel tetap ada */
+.sched-table td.sld-side {
   color: #1d4ed8;
+}
+
+/* sel incoming SLD (meter, main breaker, kabel incoming) tanpa kotak */
+.sched-table td.sld-incoming,
+.sched-table th.sld-incoming {
+  border-color: transparent;
 }
 
 @page {

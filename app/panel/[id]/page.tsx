@@ -7,6 +7,7 @@ import { supabase, withClockSkewRetry } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 import type { Circuit, Panel } from "@/lib/types";
 import PanelScheduleTable from "@/components/PanelScheduleTable";
+import HorizontalScroller from "@/components/HorizontalScroller";
 
 export default function PanelPage() {
   const { t } = useI18n();
@@ -128,15 +129,16 @@ export default function PanelPage() {
 
       {panel && (
         <div className="print-area rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-          <div className="overflow-x-auto">
+          <HorizontalScroller>
             <PanelScheduleTable
               panel={panel}
               circuits={circuits}
               projectName={projectName}
             />
-          </div>
+          </HorizontalScroller>
         </div>
       )}
     </main>
   );
 }
+

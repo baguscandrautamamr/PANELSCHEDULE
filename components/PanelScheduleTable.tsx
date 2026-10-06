@@ -763,7 +763,7 @@ export default function PanelScheduleTable({
             <th
               rowSpan={3}
               style={{ width: INCOMING_WIDTH, minWidth: INCOMING_WIDTH }}
-              className="sld-side bg-white p-1 text-left align-top"
+              className="sld-incoming bg-white p-1 text-left align-top"
             >
               {panel.symbol_tag && (
                 <span className="inline-block border border-blue-800 px-1.5 text-base font-normal text-blue-800">
@@ -901,7 +901,7 @@ export default function PanelScheduleTable({
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
                 {idx === 0 && (
-                  <td rowSpan={circuits.length} className="sld-side relative p-0 align-top">
+                  <td rowSpan={circuits.length} className="sld-incoming relative p-0 align-top">
                     <PanelSLD panel={panel} circuits={circuits} />
                   </td>
                 )}
