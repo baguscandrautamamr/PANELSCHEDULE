@@ -133,7 +133,7 @@ export default function PanelPage() {
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-500">
               Single Line Diagram
             </h2>
-            <PanelSLD panel={panel} />
+            <PanelSLD panel={panel} circuits={circuits} />
           </div>
 
           <div className="overflow-x-auto">

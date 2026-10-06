@@ -9,7 +9,7 @@ import {
   panelVoltageLN,
   suggestBreakerText,
 } from "./panelCalc";
-import { circuitSpec } from "./circuitSpec";
+import { circuitSpec, mainBreakerSpec } from "./circuitSpec";
 import { makeT, type Lang } from "./i18n";
 import { COLUMN_WIDTH, pxToMm, type ColumnWidth } from "./panelColumns";
 
@@ -259,7 +259,9 @@ export function exportPanelToDxf(
     styles.set(blockName(s), s);
     return s;
   };
-  const mainStyle = panel.main_breaker_type ? remember(panel.main_breaker_type) : null;
+  /** Main breaker + kabel incoming dari CONNECTED AMPERE x 1,2 (sama dengan website). */
+  const main = mainBreakerSpec(panel, circuits);
+  const mainStyle = remember(main.type);
   /** Breaker, kabel, dan OD tiap circuit — diturunkan dari arus circuit. */
   const specs = circuits.map((c) => circuitSpec(panel, c));
   const rowStyles = specs.map((spec) => remember(spec.rule.breakerType));
@@ -407,46 +409,89 @@ export function exportPanelToDxf(
     });
   }
 
+  // kabel incoming naik dari sumber (bawah) lalu belok ke bus
+  const feedX = CONTENT_LEFT;
+  const feedBottom = busTop - 45;
+  dxf.line([feedX, feedBottom], [feedX, busTop]);
+  dxf.line([feedX, busTop], [BUS_X, busTop]);
   if (panel.source_panel) {
-    dxf.text(panel.source_panel, [CONTENT_LEFT, busTop + 4], { height: 2.6 });
+    dxf.text(`FROM ${panel.source_panel.replace(/^FROM\s+/i, "")}`, [feedX, feedBottom - 4], {
+      height: 2.6,
+    });
   }
-  dxf.line([CONTENT_LEFT, busTop], [BUS_X, busTop]);
-  if (panel.incoming_cable) {
-    // di bawah simbol main breaker (tinggi setengah block ~3.6mm), bukan menempel
-    dxf.text(panel.incoming_cable, [CONTENT_LEFT, busTop - 7], { height: 2.2 });
-  }
-
-  if (mainStyle) {
-    const mainX = CONTENT_LEFT + 42;
-    dxf.layer(L.breaker);
-    dxf.insert(blockName(mainStyle), [mainX, busTop]);
+  if (main.cable) {
     dxf.layer(L.text);
-    dxf.text(panel.main_breaker_type ?? "", [mainX, busTop + 6], { height: 2.4 });
+    dxf.text(main.cable, [feedX - 3, feedBottom + 2], { height: 2.2, rotation: 90 });
   }
 
-  if (panel.main_breaker_rating) {
-    dxf.layer(L.sld);
-    dxf.rect(CONTENT_LEFT, busTop - 22, 46, 13);
-    dxf.layer(L.text);
-    dxf.text("MCB Rating", [CONTENT_LEFT + 2, busTop - 12.5], { height: 2 });
-    dxf.text(panel.main_breaker_rating, [CONTENT_LEFT + 2, busTop - 18], { height: 2.8 });
-  }
-
-  // fuse + lampu indikator R/Y/B naik dari bus
-  dxf.layer(L.sld);
-  dxf.line([BUS_X, busTop], [BUS_X, busTop + 30]);
-  dxf.insert("FUSE_SYM", [BUS_X, busTop + 12]);
+  // main breaker
+  const mainX = CONTENT_LEFT + 12;
+  dxf.layer(L.breaker);
+  dxf.insert(blockName(mainStyle), [mainX, busTop]);
   dxf.layer(L.text);
-  dxf.text(panel.fuse_rating ?? "F", [BUS_X + 4, busTop + 12], { height: 2.2 });
+  dxf.text(main.type, [mainX + BRK_W / 2, busTop - 8], { height: 2.6, align: "center" });
+  dxf.text(main.breaker.replace(main.type, "").trim(), [mainX + BRK_W / 2, busTop - 12], {
+    height: 2.6,
+    align: "center",
+  });
 
+  // fuse + lampu indikator R/Y/B
+  const fuseX = CONTENT_LEFT + 45;
+  dxf.layer(L.sld);
+  dxf.line([fuseX, busTop], [fuseX, busTop + 30]);
+  dxf.insert("FUSE_SYM", [fuseX, busTop + 12]);
+  dxf.layer(L.text);
+  dxf.text(panel.fuse_rating ?? "F 2A", [fuseX - 3, busTop + 12], { height: 2.2, align: "right" });
+  dxf.layer(L.sld);
+  dxf.line([fuseX, busTop + 30], [fuseX - 24, busTop + 30]);
   (["R", "Y", "B"] as const).forEach((label, i) => {
-    const lamp: Pt = [22 + i * 12, busTop + 42];
+    const lamp: Pt = [fuseX - 24 + i * 10, busTop + 38];
     dxf.layer(L.sld);
-    dxf.line([BUS_X, busTop + 30], [lamp[0], lamp[1] - 2.5]);
+    dxf.line([lamp[0], busTop + 30], [lamp[0], lamp[1] - 2.5]);
     dxf.insert("LAMP_IND", lamp);
     dxf.layer(L.text);
     dxf.text(label, [lamp[0], lamp[1] + 5], { height: 2.4, align: "center" });
   });
+
+  // surge arrester ke tanah
+  const saX = CONTENT_LEFT + 70;
+  dxf.layer(L.sld);
+  dxf.line([saX, busTop], [saX, busTop - 14]);
+  dxf.solidTriangle([saX - 1.8, busTop - 5], [saX + 1.8, busTop - 5], [saX, busTop - 9]);
+  dxf.line([saX - 2.5, busTop - 14], [saX + 2.5, busTop - 14]);
+  dxf.line([saX - 1.6, busTop - 15], [saX + 1.6, busTop - 15]);
+  dxf.line([saX - 0.7, busTop - 16], [saX + 0.7, busTop - 16]);
+  dxf.layer(L.text);
+  dxf.text("SA", [saX - 3, busTop - 9], { height: 2.4, align: "right" });
+
+  /** meter (lingkaran + huruf) dengan selector switch, kabel ke titik `from` */
+  const meter = (y: number, letter: string, sw: string, scale: string, fromX: number) => {
+    const mX = CONTENT_LEFT + 62;
+    dxf.layer(L.sld);
+    dxf.line([fromX, y], [mX + 12, y]);
+    dxf.rect(mX + 8, y - 1.5, 4, 3);
+    dxf.line([mX + 8, y], [mX + 3, y]);
+    dxf.circle([mX, y], 3);
+    dxf.layer(L.text);
+    dxf.text(letter, [mX, y], { height: 2.4, align: "center" });
+    dxf.text(sw, [mX + 10, y - 4], { height: 1.8, align: "center" });
+    dxf.text(scale, [mX - 4, y + 5], { height: 2, align: "left" });
+  };
+
+  // CT + ammeter (ASS)
+  if (main.ct) {
+    const ctX = CONTENT_LEFT + 88;
+    dxf.layer(L.sld);
+    dxf.circle([ctX, busTop], 1.6);
+    dxf.line([ctX, busTop + 1.6], [ctX, busTop + 15]);
+    dxf.layer(L.text);
+    dxf.text(`CT ${main.ct}`, [ctX, busTop - 5], { height: 2, align: "center" });
+    meter(busTop + 15, "A", "ASS", main.ammeter ?? "", ctX);
+  }
+  // voltmeter (VSS) dari bus
+  dxf.layer(L.sld);
+  dxf.line([BUS_X, busTop], [BUS_X, busTop + 30]);
+  meter(busTop + 30, "V", "VSS", "0~400V", BUS_X);
 
   // ---- header tabel
   const headTop = 0;
@@ -536,6 +581,10 @@ export function exportPanelToDxf(
     t(
       "TYPE & OD = kabel NYY katalog KMI (IEC 60502-1) - ukuran terkecil dengan KHA di udara di atas rating breaker; min. LIGHTING 3C x 2.5mm2, RECEPTACLE 1 fase 3C x 4mm2, RECEPTACLE 3 fase 5C x 4mm2",
       "TYPE & OD = NYY cable from the KMI catalogue (IEC 60502-1) - smallest size whose in-air ampacity is above the breaker rating; min. LIGHTING 3C x 2.5mm2, single-phase RECEPTACLE 3C x 4mm2, three-phase RECEPTACLE 5C x 4mm2"
+    ),
+    t(
+      `MAIN BREAKER = CONNECTED AMPERE x 1,2 = ${round1(main.ampere)} x 1,2 = ${round1(main.ampere * 1.2)} A -> ${main.breaker}; kabel incoming ${main.cable}`,
+      `MAIN BREAKER = CONNECTED AMPERE x 1.2 = ${round1(main.ampere)} x 1.2 = ${round1(main.ampere * 1.2)} A -> ${main.breaker}; incoming cable ${main.cable}`
     ),
     t(
       "Satuan gambar: milimeter, skala 1:1. Simbol breaker = block BRK_*.",

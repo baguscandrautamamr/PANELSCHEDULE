@@ -62,6 +62,8 @@ export interface TextOptions {
   align?: HAlign;
   /** 0 = baseline, 2 = tengah (default), 3 = atas */
   vAlign?: 0 | 1 | 2 | 3;
+  /** sudut putar (derajat), mis. 90 untuk teks vertikal */
+  rotation?: number;
 }
 
 const H_CODE: Record<HAlign, number> = { left: 0, center: 1, right: 2 };
@@ -178,7 +180,8 @@ export class DxfBuilder {
         g(11, num(at[0])) +
         g(21, num(at[1])) +
         g(31, num(0)) +
-        g(73, vCode)
+        g(73, vCode) +
+        (opts.rotation ? g(50, num(opts.rotation)) : "")
     );
   }
 
