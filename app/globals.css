@@ -12,9 +12,9 @@ body {
 
 /* sisi SLD (bus, NO., BREAKER) tanpa garis vertikal — seperti template gambar,
    tiap circuit cuma garis feeder horizontal sampai kolom TYPE */
-.sched-table td.sld-side {
-  border-left-color: transparent;
-  border-right-color: transparent;
+.sched-table td.sld-side,
+.sched-table th.sld-side {
+  border-color: transparent;
   color: #1d4ed8;
 }
 

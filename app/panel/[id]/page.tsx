@@ -7,7 +7,6 @@ import { supabase, withClockSkewRetry } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 import type { Circuit, Panel } from "@/lib/types";
 import PanelScheduleTable from "@/components/PanelScheduleTable";
-import PanelSLD from "@/components/PanelSLD";
 
 export default function PanelPage() {
   const { t } = useI18n();
@@ -129,13 +128,6 @@ export default function PanelPage() {
 
       {panel && (
         <div className="print-area rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-          <div className="print-sld mb-4 max-w-3xl border-b border-neutral-200 pb-3">
-            <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-neutral-500">
-              Single Line Diagram
-            </h2>
-            <PanelSLD panel={panel} circuits={circuits} />
-          </div>
-
           <div className="overflow-x-auto">
             <PanelScheduleTable
               panel={panel}

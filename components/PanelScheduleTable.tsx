@@ -8,6 +8,7 @@ import { COLUMN_WIDTH, type ColumnWidth } from "@/lib/panelColumns";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
+import PanelSLD, { INCOMING_WIDTH } from "@/components/PanelSLD";
 import { circuitSpec, mainBreakerSpec } from "@/lib/circuitSpec";
 import {
   BREAKER_RATINGS,
@@ -118,13 +119,13 @@ function MiniCircuitBranch({
   };
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center">
-      <div className="absolute inset-y-0 left-[6px] w-[2px] bg-blue-700" />
+      <div className="absolute inset-y-0 left-0 w-[3px] bg-blue-700" />
       <svg
         viewBox={`0 -620 ${O + end + 300} 900`}
         className={`relative h-6 w-full text-neutral-800 ${dim ? "opacity-30" : ""}`}
       >
         <g stroke="currentColor" strokeWidth={40} fill="none" strokeLinecap="round">
-          <line x1={100} y1={0} x2={O + 250} y2={0} />
+          <line x1={0} y1={0} x2={O + 250} y2={0} />
           <path d={`M${O + 179} -71 L${O + 321} 71 M${O + 321} -71 L${O + 179} 71`} />
           <line x1={O + 357} y1={-400} x2={O + 1050} y2={0} />
           {Array.from({ length: poles }, (_, i) => (
@@ -748,7 +749,7 @@ export default function PanelScheduleTable({
               halaman lanjutan tetap kelihatan ini schedule panel yang mana */}
           <tr className="hidden print:table-row">
             <th
-              colSpan={11 + cols.length}
+              colSpan={12 + cols.length}
               className="sched-page-title px-2 py-1 text-left text-[10px]"
             >
               {[projectName, panel.panel_code, panel.location && `LOCATION ${panel.location}`]
@@ -757,6 +758,19 @@ export default function PanelScheduleTable({
             </th>
           </tr>
           <tr className="bg-neutral-100">
+            {/* sisi incoming SLD (meter, main breaker, kabel incoming) — sama
+                posisinya dengan drawing: di kiri bus, sejajar baris circuit */}
+            <th
+              rowSpan={3}
+              style={{ width: INCOMING_WIDTH, minWidth: INCOMING_WIDTH }}
+              className="sld-side bg-white p-1 text-left align-top"
+            >
+              {panel.symbol_tag && (
+                <span className="inline-block border border-blue-800 px-1.5 text-base font-normal text-blue-800">
+                  {panel.symbol_tag}
+                </span>
+              )}
+            </th>
             <th
               rowSpan={3}
               style={colStyle(COLUMN_WIDTH.sld)}
@@ -886,6 +900,11 @@ export default function PanelScheduleTable({
             const amp = spec.ampere;
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={circuits.length} className="sld-side relative p-0 align-top">
+                    <PanelSLD panel={panel} circuits={circuits} />
+                  </td>
+                )}
                 <td className="sld-side relative p-0">
                   <MiniCircuitBranch breakerType={spec.rule.breakerType} dim={c.is_spare} />
                 </td>
@@ -1035,7 +1054,7 @@ export default function PanelScheduleTable({
             di akhir tabel. */}
         <tbody className="sched-summary font-semibold">
           <tr className="bg-neutral-50">
-            <td colSpan={5} className="px-2 py-1 text-right">
+            <td colSpan={6} className="px-2 py-1 text-right">
               TOTAL
             </td>
             {cols.map((col) => (
@@ -1048,7 +1067,7 @@ export default function PanelScheduleTable({
             <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={6 + cols.length} className="px-2 py-1 text-right">
               SUB TOTAL
             </td>
             <td className="px-2 py-1 text-right">{nf.format(subR)}</td>
@@ -1058,7 +1077,7 @@ export default function PanelScheduleTable({
             <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={6 + cols.length} className="px-2 py-1 text-right">
               TOTAL WATT
             </td>
             <td colSpan={3} className="px-2 py-1 text-center">
@@ -1068,7 +1087,7 @@ export default function PanelScheduleTable({
             <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={6 + cols.length} className="px-2 py-1 text-right">
               TOTAL VA
             </td>
             <td colSpan={3} className="px-2 py-1 text-center">
@@ -1078,7 +1097,7 @@ export default function PanelScheduleTable({
             <td colSpan={4} className="px-2 py-1" />
           </tr>
           <tr className="bg-neutral-50">
-            <td colSpan={5 + cols.length} className="px-2 py-1 text-right">
+            <td colSpan={6 + cols.length} className="px-2 py-1 text-right">
               CONNECTED AMPERE
             </td>
             <td colSpan={3} className="px-2 py-1 text-center">
