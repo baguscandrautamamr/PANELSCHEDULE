@@ -63,6 +63,12 @@ const ROW = 600;
  * (Arial Narrow) — dilebihkan sedikit dari rata-rata huruf kapital (~0,5).
  */
 const CHAR_W = 0.55;
+/**
+ * Lebar karakter untuk membungkus nama fixture di header: nama family Revit
+ * penuh huruf kapital lebar (W, M) dan "_", jadi pakai perkiraan yang aman
+ * supaya baris tidak keluar dari kolom.
+ */
+const FIX_CHAR_W = 0.78;
 
 const BOX_LEFT = 90630;
 const BOX_RIGHT = 102413;
@@ -80,7 +86,8 @@ const MAIN_Y = -75629;
 const FEED_X = 89715;
 
 const FUNC_W = 4841;
-const FIX_W = 2000;
+/** lebar kolom FIXTURE — cukup untuk nama family Revit yang panjang */
+const FIX_W = 2600;
 const DF_W = 1000;
 const PH_W = 2000;
 const REM_W = 1673;
@@ -88,8 +95,8 @@ const REM_W = 1673;
 const textW = (s: string, h: number) => s.length * h * CHAR_W;
 
 /** Pecah teks supaya muat di lebar tertentu (dipotong di spasi / pemisah nama family). */
-function wrapText(value: string, width: number, height: number): string[] {
-  const max = Math.max(1, Math.floor(width / (height * CHAR_W)));
+function wrapText(value: string, width: number, height: number, charW = CHAR_W): string[] {
+  const max = Math.max(1, Math.floor(width / (height * charW)));
   const lines: string[] = [];
   let cur = "";
   for (const word of value.split(/\s+/).filter(Boolean)) {
@@ -620,8 +627,8 @@ export function exportPanelToDxf(
   cols.forEach((col, k) => {
     const cx = xFix0 + k * FIX_W + FIX_W / 2;
     const lines = [
-      ...wrapText(col.type, FIX_W - 200, TXT_FIX),
-      ...(col.label ? wrapText(col.label, FIX_W - 200, TXT_FIX) : []),
+      ...wrapText(col.type, FIX_W - 200, TXT_FIX, FIX_CHAR_W),
+      ...(col.label ? wrapText(col.label, FIX_W - 200, TXT_FIX, FIX_CHAR_W) : []),
     ].slice(0, 8);
     const lh = TXT_FIX * 1.5;
     lines.forEach((line, j) =>
