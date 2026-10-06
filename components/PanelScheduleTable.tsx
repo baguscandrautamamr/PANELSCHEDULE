@@ -105,30 +105,41 @@ function MiniCircuitBranch({
 }) {
   const t = (breakerType ?? "").toUpperCase();
   const isMccb = t.includes("MCCB");
-  // RCBO & RCCB sama-sama proteksi arus bocor — kotak RCD + garis toroid
+  // RCBO & RCCB = simbol ELCB template (kotak relay arus bocor di ujung)
   const isRcd = t.includes("RCBO") || t.includes("RCCB");
   const poles = Math.min(4, Math.max(1, parseInt(t.match(/(\d)\s*P/)?.[1] ?? "1", 10)));
+  // geometri block MCB-1P / MCB-3P / ELCB-2P / ELCB-4P dari template DWG
+  // (satuan gambar, y dibalik untuk SVG); origin block di x = 700
+  const O = 700;
+  const end = isRcd ? 1684 : 1300;
+  const slash = (i: number) => {
+    const dx = (i - (poles - 1) / 2) * 87;
+    return `M${O + 723 + dx} -333 L${O + 598 + dx} -117`;
+  };
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center">
-      {/* bus vertikal penuh setinggi baris */}
-      <div className="absolute inset-y-0 left-[7px] w-[2px] bg-blue-700" />
+      <div className="absolute inset-y-0 left-[6px] w-[2px] bg-blue-700" />
       <svg
-        viewBox="0 0 40 20"
-        className={`relative h-5 w-full text-neutral-700 ${dim ? "opacity-30" : ""}`}
+        viewBox={`0 -620 ${O + end + 300} 900`}
+        className={`relative h-6 w-full text-neutral-800 ${dim ? "opacity-30" : ""}`}
       >
-        <g stroke="currentColor" strokeWidth={1} fill="none">
-          <line x1={8} y1={10} x2={13} y2={10} />
-          {/* titik putus (x) + lengan kontak */}
-          <path d="M11.5 8.5 l3 3 M11.5 11.5 l3 -3" />
-          <line x1={13} y1={10} x2={24} y2={4} />
+        <g stroke="currentColor" strokeWidth={40} fill="none" strokeLinecap="round">
+          <line x1={100} y1={0} x2={O + 250} y2={0} />
+          <path d={`M${O + 179} -71 L${O + 321} 71 M${O + 321} -71 L${O + 179} 71`} />
+          <line x1={O + 357} y1={-400} x2={O + 1050} y2={0} />
           {Array.from({ length: poles }, (_, i) => (
-            <line key={i} x1={17 + i * 2} y1={9} x2={19 + i * 2} y2={5} />
+            <path key={i} d={slash(i)} />
           ))}
-          {isMccb && <rect x={11} y={2} width={14} height={11} strokeDasharray="2 1" />}
-          {isRcd && <rect x={26} y={4} width={5} height={5} />}
-          <line x1={24} y1={10} x2={34} y2={10} />
+          {isMccb && <rect x={O + 150} y={-520} width={950} height={640} strokeDasharray="60 40" />}
+          {isRcd && (
+            <>
+              <rect x={O + 1351} y={-517} width={295} height={295} />
+              <path d={`M${O + 1395} -222 V-3 M${O + 1602} -222 V-3 M${O + 1351} -369 H${O + 1003} V-150`} />
+              <circle cx={O + 1498} cy={0} r={90} />
+            </>
+          )}
+          <line x1={O + 1050} y1={0} x2={O + end + 300} y2={0} />
         </g>
-        <polygon points="34,8 38,10 34,12" fill="currentColor" />
       </svg>
     </div>
   );
@@ -758,13 +769,6 @@ export default function PanelScheduleTable({
             </th>
             <th
               rowSpan={3}
-              style={colStyle(COLUMN_WIDTH.function)}
-              className="px-2 py-1 text-left align-middle"
-            >
-              FUNCTION
-            </th>
-            <th
-              rowSpan={3}
               style={colStyle(COLUMN_WIDTH.breaker)}
               className="px-2 py-1 align-middle"
               title={t(
@@ -784,6 +788,13 @@ export default function PanelScheduleTable({
               )}
             >
               TYPE
+            </th>
+            <th
+              rowSpan={3}
+              style={colStyle(COLUMN_WIDTH.function)}
+              className="px-2 py-1 text-left align-middle"
+            >
+              FUNCTION
             </th>
             {cols.length > 0 && (
               <th colSpan={cols.length} className="px-2 py-1">
@@ -875,10 +886,10 @@ export default function PanelScheduleTable({
             const amp = spec.ampere;
             return (
               <tr key={c.id} className={c.is_spare ? "text-neutral-400" : ""}>
-                <td className="relative p-0">
+                <td className="sld-side relative p-0">
                   <MiniCircuitBranch breakerType={spec.rule.breakerType} dim={c.is_spare} />
                 </td>
-                <td className="px-1 py-0.5 text-center">
+                <td className="sld-side px-1 py-0.5 text-center">
                   <div className="flex items-center justify-center gap-1">
                     {editing && (
                       <div className="no-print flex flex-col leading-none">
@@ -964,20 +975,7 @@ export default function PanelScheduleTable({
                     )}
                   </div>
                 </td>
-                <td className="px-1 py-0.5">
-                  {editing ? (
-                    <CellInput
-                      key={`f-${c.id}-${c.function_name}`}
-                      initial={c.function_name}
-                      onCommit={(v) =>
-                        updateCircuit(c.id, { function_name: v || c.function_name })
-                      }
-                    />
-                  ) : (
-                    c.function_name
-                  )}
-                </td>
-                <td className="px-1 py-0.5 text-center whitespace-nowrap">{spec.breaker}</td>
+                <td className="sld-side px-1 py-0.5 text-center whitespace-nowrap">{spec.breaker}</td>
                 <td
                   className={`px-1 py-0.5 text-center whitespace-nowrap ${
                     spec.cable?.undersized ? "font-semibold text-amber-700" : ""
@@ -992,6 +990,19 @@ export default function PanelScheduleTable({
                   }
                 >
                   {spec.cableText}
+                </td>
+                <td className="px-1 py-0.5">
+                  {editing ? (
+                    <CellInput
+                      key={`f-${c.id}-${c.function_name}`}
+                      initial={c.function_name}
+                      onCommit={(v) =>
+                        updateCircuit(c.id, { function_name: v || c.function_name })
+                      }
+                    />
+                  ) : (
+                    c.function_name
+                  )}
                 </td>
                 {cols.map((col) => {
                   const q = qtyOf(c, col.key);

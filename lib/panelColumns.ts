@@ -15,7 +15,7 @@ export interface ColumnWidth {
 
 export const COLUMN_WIDTH = {
   /** kolom gambar cabang SLD, bukan teks */
-  sld: { px: 40, maxPx: 40 },
+  sld: { px: 72, maxPx: 72 },
   no: { px: 44, maxPx: 44 },
   function: { px: 208, maxPx: 320 },
   breaker: { px: 96, maxPx: 160 },

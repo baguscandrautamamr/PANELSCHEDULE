@@ -113,9 +113,9 @@ export function pickCable(cores: CableCores, current: number, minSize: number): 
 export const cableSizeText = (size: number) =>
   Number.isInteger(size) ? String(size) : size.toFixed(1);
 
-/** Nama kabel di kolom TYPE — "NYY 3C x 2.5mm2". */
+/** Nama kabel di kolom TYPE — "NYY 3C x 2.5mm²" (seperti template gambar). */
 export const cableText = (cores: CableCores, size: number) =>
-  `NYY ${cores}C x ${cableSizeText(size)}mm2`;
+  `NYY ${cores}C x ${cableSizeText(size)}mm²`;
 
 /** Isi kolom OD (mm), 1 desimal seperti katalog. */
 export const odText = (od: number) => od.toFixed(1);

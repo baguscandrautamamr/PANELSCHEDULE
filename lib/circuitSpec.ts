@@ -128,10 +128,10 @@ export function ruleRating(rule: CircuitRule, ampere: number | null): number | n
   return picked == null ? null : Math.max(rule.minRating, picked);
 }
 
-/** Isi kolom BREAKER — "MCB 1P 20A", "RCBO 2P 16A 30mA". */
+/** Isi kolom BREAKER, format template gambar — "MCB 1P, 10A", "RCBO 2P, 30mA, 16A". */
 export function breakerText(rule: CircuitRule, rating: number | null): string {
   const size = rating == null ? `> ${BREAKER_RATINGS[BREAKER_RATINGS.length - 1]}A` : `${rating}A`;
-  return [rule.breakerType, size, rule.residual].filter(Boolean).join(" ");
+  return [rule.breakerType, rule.residual, size].filter(Boolean).join(", ");
 }
 
 /**
@@ -253,9 +253,9 @@ export function mainBreakerSpec(panel: Panel, circuits: Circuit[]): MainBreakerS
   const cores: CableCores = three ? 4 : 3;
   const cablePick = rating == null ? null : pickCable(cores, rating, 4);
   const cable = cablePick
-    ? `NYY ${cores}C x ${cableSizeText(cablePick.size)}mm2 + NYA 1C x ${cableSizeText(
+    ? `NYY ${cores}C x ${cableSizeText(cablePick.size)}mm² + NYA 1C x ${cableSizeText(
         groundSize(cablePick.size)
-      )}mm2`
+      )}mm²`
     : "";
 
   const withCt = rating != null && rating >= 100;

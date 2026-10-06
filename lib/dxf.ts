@@ -23,9 +23,10 @@ const TRANSLIT: Record<string, string> = {
   "±": "+/-",
   "→": "->",
   "▼": "v",
-  "°": "deg",
-  "²": "2",
-  "³": "3",
+  "°": "%%d",
+  "Ø": "%%c",
+  "²": "\\U+00B2",
+  "³": "\\U+00B3",
   "“": '"',
   "”": '"',
   "‘": "'",
@@ -137,6 +138,21 @@ export class DxfBuilder {
   }
 
   /** Segitiga solid (isi penuh) — dipakai untuk panah keluar. */
+  arc(center: Pt, radius: number, startDeg: number, endDeg: number) {
+    this.track(center[0] - radius, center[1] - radius);
+    this.track(center[0] + radius, center[1] + radius);
+    this.buffer.push(
+      g(0, "ARC") +
+        g(8, this.currentLayer) +
+        g(10, num(center[0])) +
+        g(20, num(center[1])) +
+        g(30, num(0)) +
+        g(40, num(radius)) +
+        g(50, num(startDeg)) +
+        g(51, num(endDeg))
+    );
+  }
+
   solidTriangle(p1: Pt, p2: Pt, p3: Pt) {
     for (const p of [p1, p2, p3]) this.track(p[0], p[1]);
     // vertex ke-4 disamakan dengan ke-3 supaya SOLID jadi segitiga
