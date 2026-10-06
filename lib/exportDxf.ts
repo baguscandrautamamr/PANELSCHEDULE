@@ -11,12 +11,6 @@ import {
 import { circuitSpec, mainBreakerSpec } from "./circuitSpec";
 import { FIXTURE_GROUP, fixtureGroup } from "./fixtureOrder";
 import { makeT, type Lang } from "./i18n";
-import {
-  FIXTURE_SYMBOLS,
-  fixtureSymbolFor,
-  type FixtureSymbolName,
-  type SymbolPrim,
-} from "./fixtureSymbols";
 
 interface FixtureCol {
   key: string;
@@ -347,25 +341,6 @@ function defineFixedBlocks(d: TplDxf) {
   d.endBlock();
 }
 
-/** Block simbol fixture header (geometri dari header DWG template). */
-const fixtureBlockName = (n: FixtureSymbolName) => `FIX_${n}`;
-
-function defineFixtureBlock(d: TplDxf, name: FixtureSymbolName) {
-  d.beginBlock(fixtureBlockName(name));
-  d.layer(L.sld);
-  for (const p of FIXTURE_SYMBOLS[name] as SymbolPrim[]) {
-    if (p[0] === "L") d.line(p[1], p[2], p[3], p[4]);
-    else if (p[0] === "P") {
-      const pts: [number, number][] = [];
-      for (let i = 0; i + 1 < p[2].length; i += 2) pts.push([p[2][i], p[2][i + 1]]);
-      d.poly(pts, p[1]);
-    } else if (p[0] === "C") d.circle(p[1], p[2], p[3]);
-    else if (p[0] === "A") d.arc(p[1], p[2], p[3], p[4], p[5]);
-    else d.text(p[4], p[1], p[2], p[3], { vAlign: 0 });
-  }
-  d.endBlock();
-}
-
 // ---------------------------------------------------------------- export
 /**
  * Export panel schedule ke DXF (AutoCAD R12) dengan gaya template gambar
@@ -411,8 +386,6 @@ export function exportPanelToDxf(
   const mainStyle = remember(parseBreaker(main.type));
   const rowStyles = specs.map((s) => remember(parseBreaker(s.rule.breakerType)));
   for (const s of styles.values()) defineBreakerBlock(d, s);
-  const colSymbols = cols.map((c) => fixtureSymbolFor(c.type, c.label));
-  for (const n of new Set(colSymbols)) if (n) defineFixtureBlock(d, n);
 
   // ---- kolom tabel
   const qtyOf = (c: Circuit, key: string) =>
@@ -642,39 +615,16 @@ export function exportPanelToDxf(
     const x1 = xFix0 + (g.to + 1) * FIX_W;
     d.text(g.name, (x0 + x1) / 2, grpMid, TXT, { align: "center" });
   }
-  // header fixture: simbol (seperti template) lalu nama type + label di bawahnya
-  const SYM_Y = -71000;
   cols.forEach((col, k) => {
     const cx = xFix0 + k * FIX_W + FIX_W / 2;
-    const sym = colSymbols[k];
-    if (sym) {
-      d.layer(L.sld);
-      d.insert(fixtureBlockName(sym), cx, SYM_Y);
-      d.layer(L.text);
-    }
-    const wrapAt = (h: number) => [
-      ...wrapText(col.type, FIX_W - 160, h),
-      ...(col.label ? wrapText(col.label, FIX_W - 160, h) : []),
-    ];
-    if (sym) {
-      // di bawah simbol (mulai sejajar baris teks template): 4 baris teks 150,
-      // kalau nama family lebih panjang hurufnya dikecilkan, tidak dipotong
-      let h = TXT_FIX;
-      let lines = wrapAt(h);
-      while (lines.length * h * 1.15 > 640 && h > 90) {
-        h -= 15;
-        lines = wrapAt(h);
-      }
-      lines.forEach((line, j) =>
-        d.text(line, cx, -71580 - j * h * 1.15, h, { align: "center" })
-      );
-    } else {
-      const lines = wrapAt(TXT_FIX);
-      const lh = 200;
-      lines.forEach((line, j) =>
-        d.text(line, cx, subMid + ((lines.length - 1) / 2 - j) * lh, TXT_FIX, { align: "center" })
-      );
-    }
+    const lines = [
+      ...wrapText(col.type, FIX_W - 200, TXT_FIX),
+      ...(col.label ? wrapText(col.label, FIX_W - 200, TXT_FIX) : []),
+    ].slice(0, 8);
+    const lh = TXT_FIX * 1.5;
+    lines.forEach((line, j) =>
+      d.text(line, cx, subMid + ((lines.length - 1) / 2 - j) * lh, TXT_FIX, { align: "center" })
+    );
   });
 
   // isi baris

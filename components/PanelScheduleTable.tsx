@@ -9,8 +9,6 @@ import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
 import PanelSLD, { INCOMING_WIDTH } from "@/components/PanelSLD";
-import FixtureSymbol from "@/components/FixtureSymbol";
-import { fixtureSymbolFor } from "@/lib/fixtureSymbols";
 import { circuitSpec, mainBreakerSpec } from "@/lib/circuitSpec";
 import {
   BREAKER_RATINGS,
@@ -876,12 +874,6 @@ export default function PanelScheduleTable({
                 {/* overflow-wrap:anywhere — nama family panjang (satu kata)
                     boleh dipotong supaya kolom bisa menyempit di layar kecil,
                     tidak memaksa tabel melebar sampai REMARKS terpotong */}
-                {(() => {
-                  const sym = fixtureSymbolFor(col.type, col.label);
-                  return sym ? (
-                    <FixtureSymbol name={sym} className="mx-auto mb-1 h-11 w-16 text-neutral-800" />
-                  ) : null;
-                })()}
                 <div className="whitespace-normal [overflow-wrap:anywhere] text-[10px] font-semibold leading-tight">
                   {col.type}
                 </div>
