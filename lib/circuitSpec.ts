@@ -1,13 +1,16 @@
 import type { Circuit, Panel } from "./types";
 import { FIXTURE_GROUP, textGroup } from "./fixtureOrder";
 import {
+  BREAKER_MARGIN,
   BREAKER_RATINGS,
   circuitAmpere,
+  panelPowerFactor,
+  panelVoltage,
   energizedPhases,
   is3Phase,
   suggestBreaker,
 } from "./panelCalc";
-import { cableText, odText, pickCable, type CableCores, type CablePick } from "./cableCatalog";
+import { cableSizeText, cableText, odText, pickCable, type CableCores, type CablePick } from "./cableCatalog";
 
 /**
  * Jenis beban satu circuit — penentu jenis breaker dan jenis kabelnya.
@@ -180,5 +183,90 @@ export function circuitSpec(panel: Panel, c: Circuit): CircuitSpec {
     cable,
     cableText: cable ? cableText(cable.cores, cable.size) : "",
     odText: cable ? odText(cable.od) : "",
+  };
+}
+
+// ---------------------------------------------------------------- main breaker
+
+/**
+ * Rating main breaker standar (A). Melanjutkan BREAKER_RATINGS sampai ukuran
+ * MCCB/ACB incoming yang lazim.
+ */
+export const MAIN_BREAKER_RATINGS = [
+  ...BREAKER_RATINGS,
+  225, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600,
+];
+
+/** Ukuran kabel NYA pembumian (mm²) — PUIL: S<=16 sama, 16<S<=35 -> 16, S>35 -> S/2. */
+const NYA_SIZES = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
+export function groundSize(phaseSize: number): number {
+  if (phaseSize <= 16) return phaseSize;
+  if (phaseSize <= 35) return 16;
+  const half = phaseSize / 2;
+  return NYA_SIZES.find((s) => s >= half) ?? NYA_SIZES[NYA_SIZES.length - 1];
+}
+
+export interface MainBreakerSpec {
+  /** CONNECTED AMPERE panel (A) */
+  ampere: number;
+  /** rating main breaker (A), null kalau melebihi daftar */
+  rating: number | null;
+  /** "MCCB 3P" / "MCB 3P" / "MCB 2P" */
+  type: string;
+  /** "MCCB 3P 200A" */
+  breaker: string;
+  /** "NYY 4C x 70mm² + NYA 1C x 35mm²" */
+  cable: string;
+  cablePick: CablePick | null;
+  /** rasio CT, mis. "200/5A" (null kalau tidak perlu CT, rating < 100A) */
+  ct: string | null;
+  /** skala ammeter "0~200A" */
+  ammeter: string | null;
+}
+
+/** Total VA panel → CONNECTED AMPERE (sama dengan rumus di tabel). */
+export function connectedAmpere(panel: Panel, circuits: Circuit[]): number {
+  const watt = circuits.reduce(
+    (s, c) => s + Number(c.phase_r || 0) + Number(c.phase_s || 0) + Number(c.phase_t || 0),
+    0
+  );
+  const va = watt / panelPowerFactor(panel);
+  return is3Phase(panel) ? va / (Math.sqrt(3) * panelVoltage(panel)) : va / panelVoltage(panel);
+}
+
+/**
+ * Main breaker + kabel incoming, diturunkan dari CONNECTED AMPERE x 1,2:
+ * rating standar terdekat di atasnya, MCB sampai 63A dan MCCB di atasnya.
+ * Kabel incoming NYY 4C (3 fase) / 2C→3C (1 fase) dengan KHA >= rating,
+ * ditambah NYA 1C pembumian.
+ */
+export function mainBreakerSpec(panel: Panel, circuits: Circuit[]): MainBreakerSpec {
+  const three = is3Phase(panel);
+  const ampere = connectedAmpere(panel, circuits);
+  const need = ampere * BREAKER_MARGIN;
+  const rating =
+    ampere > 0 ? (MAIN_BREAKER_RATINGS.find((r) => r >= need) ?? null) : MAIN_BREAKER_RATINGS[0];
+  const kind = rating != null && rating <= 63 ? "MCB" : "MCCB";
+  const type = `${kind} ${three ? "3P" : "2P"}`;
+  const size = rating == null ? `> ${MAIN_BREAKER_RATINGS[MAIN_BREAKER_RATINGS.length - 1]}A` : `${rating}A`;
+
+  const cores: CableCores = three ? 4 : 3;
+  const cablePick = rating == null ? null : pickCable(cores, rating, 4);
+  const cable = cablePick
+    ? `NYY ${cores}C x ${cableSizeText(cablePick.size)}mm2 + NYA 1C x ${cableSizeText(
+        groundSize(cablePick.size)
+      )}mm2`
+    : "";
+
+  const withCt = rating != null && rating >= 100;
+  return {
+    ampere,
+    rating,
+    type,
+    breaker: `${type} ${size}`,
+    cable,
+    cablePick,
+    ct: withCt ? `${rating}/5A` : null,
+    ammeter: rating != null ? `0~${rating}A` : null,
   };
 }

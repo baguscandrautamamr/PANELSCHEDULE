@@ -8,7 +8,7 @@ import { COLUMN_WIDTH, type ColumnWidth } from "@/lib/panelColumns";
 import { supabase } from "@/lib/supabase";
 import { exportPanelToExcel } from "@/lib/exportExcel";
 import { exportPanelToDxf } from "@/lib/exportDxf";
-import { circuitSpec } from "@/lib/circuitSpec";
+import { circuitSpec, mainBreakerSpec } from "@/lib/circuitSpec";
 import {
   BREAKER_RATINGS,
   is3Phase,
@@ -105,22 +105,30 @@ function MiniCircuitBranch({
 }) {
   const t = (breakerType ?? "").toUpperCase();
   const isMccb = t.includes("MCCB");
-  // RCBO & RCCB sama-sama proteksi arus bocor — digambar lingkaran RCD
-  const isRcbo = t.includes("RCBO") || t.includes("RCCB");
+  // RCBO & RCCB sama-sama proteksi arus bocor — kotak RCD + garis toroid
+  const isRcd = t.includes("RCBO") || t.includes("RCCB");
+  const poles = Math.min(4, Math.max(1, parseInt(t.match(/(\d)\s*P/)?.[1] ?? "1", 10)));
   return (
-    <div className="pointer-events-none absolute inset-0">
+    <div className="pointer-events-none absolute inset-0 flex items-center">
+      {/* bus vertikal penuh setinggi baris */}
+      <div className="absolute inset-y-0 left-[7px] w-[2px] bg-blue-700" />
       <svg
-        viewBox="0 0 40 100"
-        preserveAspectRatio="none"
-        className={`h-full w-full text-neutral-700 ${dim ? "opacity-30" : ""}`}
+        viewBox="0 0 40 20"
+        className={`relative h-5 w-full text-neutral-700 ${dim ? "opacity-30" : ""}`}
       >
-        <g stroke="currentColor" strokeWidth={3} fill="none" vectorEffect="non-scaling-stroke">
-          <line x1={8} y1={0} x2={8} y2={100} />
-          <line x1={8} y1={50} x2={24} y2={50} />
-          {isMccb && <rect x={10} y={40} width={12} height={20} />}
-          {isRcbo && <circle cx={16} cy={50} r={6} />}
+        <g stroke="currentColor" strokeWidth={1} fill="none">
+          <line x1={8} y1={10} x2={13} y2={10} />
+          {/* titik putus (x) + lengan kontak */}
+          <path d="M11.5 8.5 l3 3 M11.5 11.5 l3 -3" />
+          <line x1={13} y1={10} x2={24} y2={4} />
+          {Array.from({ length: poles }, (_, i) => (
+            <line key={i} x1={17 + i * 2} y1={9} x2={19 + i * 2} y2={5} />
+          ))}
+          {isMccb && <rect x={11} y={2} width={14} height={11} strokeDasharray="2 1" />}
+          {isRcd && <rect x={26} y={4} width={5} height={5} />}
+          <line x1={24} y1={10} x2={34} y2={10} />
         </g>
-        <polygon points="24,44 34,50 24,56" fill="currentColor" />
+        <polygon points="34,8 38,10 34,12" fill="currentColor" />
       </svg>
     </div>
   );
@@ -505,8 +513,7 @@ export default function PanelScheduleTable({
 
   const headerLine1 = [
     panel.source_panel,
-    panel.main_breaker_type &&
-      `${panel.main_breaker_type} ${panel.main_breaker_rating ?? ""}`.trim(),
+    mainBreakerSpec(panel, circuits).breaker,
     panel.fuse_rating,
   ]
     .filter(Boolean)
@@ -538,7 +545,7 @@ export default function PanelScheduleTable({
         <div className="flex items-start gap-4">
           <div className="text-right text-xs text-neutral-600">
             {headerLine1 && <p>{headerLine1}</p>}
-            {panel.incoming_cable && <p>{panel.incoming_cable}</p>}
+            <p>{mainBreakerSpec(panel, circuits).cable}</p>
             <p>
               {headerLine3} · cos φ {pf}
             </p>

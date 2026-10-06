@@ -17,8 +17,7 @@ import {
   breakerText as breakerTextOf,
   circuitSpec,
   ruleCable,
-  type CircuitRule,
-} from "./circuitSpec";
+  type CircuitRule, mainBreakerSpec } from "./circuitSpec";
 import { cableText } from "./cableCatalog";
 import { COLUMN_WIDTH, pxToExcelWidth, type ColumnWidth } from "./panelColumns";
 import { makeT, type Lang } from "./i18n";
@@ -240,14 +239,13 @@ export async function exportPanelToExcel(
 
   const line3 = [
     panel.source_panel,
-    panel.main_breaker_type &&
-      `${panel.main_breaker_type} ${panel.main_breaker_rating ?? ""}`.trim(),
+    mainBreakerSpec(panel, circuits).breaker,
     panel.fuse_rating,
   ]
     .filter(Boolean)
     .join(" | ");
   if (line3) titleRow(line3);
-  if (panel.incoming_cable) titleRow(panel.incoming_cable);
+  titleRow(mainBreakerSpec(panel, circuits).cable);
 
   const pf = panelPowerFactor(panel);
   const is3ph = is3Phase(panel);
