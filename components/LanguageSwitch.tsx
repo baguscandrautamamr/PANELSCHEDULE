@@ -13,7 +13,7 @@ export default function LanguageSwitch({ className = "" }: { className?: string 
 
   return (
     <div
-      className={`no-print inline-flex overflow-hidden rounded border border-neutral-300 ${className}`}
+      className={`no-print inline-flex rounded-lg bg-slate-100 p-0.5 ring-1 ring-slate-200 ${className}`}
       role="group"
       aria-label="Language"
     >
@@ -24,10 +24,10 @@ export default function LanguageSwitch({ className = "" }: { className?: string 
           onClick={() => setLang(opt.code)}
           title={opt.title}
           aria-pressed={lang === opt.code}
-          className={`px-2 py-0.5 text-[11px] font-semibold transition ${
+          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition ${
             lang === opt.code
-              ? "bg-blue-600 text-white"
-              : "bg-white text-neutral-600 hover:bg-neutral-100"
+              ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+              : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {opt.label}

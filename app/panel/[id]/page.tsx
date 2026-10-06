@@ -89,20 +89,25 @@ export default function PanelPage() {
   // Lebar penuh layar (dibatasi hanya di monitor sangat lebar): tabel schedule
   // + kolom fixture dinamis butuh ruang sebanyak mungkin.
   return (
-    <main className="mx-auto w-full max-w-[2400px] p-3 sm:p-4">
+    <main className="mx-auto w-full max-w-[2400px] p-3 sm:p-6">
       <div className="no-print mb-4 flex items-center justify-between">
-        <Link href="/" className="text-sm text-blue-700 hover:underline">
-          ← {t("Semua panel", "All panels")}
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-900 hover:shadow-sm"
+        >
+          <span aria-hidden>←</span> {t("Semua panel", "All panels")}
         </Link>
         <div className="flex items-center gap-3">
           <span
-            className={`flex items-center gap-1.5 text-xs ${
-              live ? "text-green-700" : "text-neutral-400"
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+              live
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-slate-200 bg-white text-slate-400"
             }`}
           >
             <span
-              className={`h-2 w-2 rounded-full ${
-                live ? "bg-green-500" : "bg-neutral-300"
+              className={`h-1.5 w-1.5 rounded-full ${
+                live ? "bg-emerald-500" : "bg-slate-300"
               }`}
             />
             {live
@@ -111,7 +116,7 @@ export default function PanelPage() {
           </span>
           <button
             onClick={() => window.print()}
-            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-blue-500"
+            className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-blue-600/30 transition hover:bg-blue-700"
           >
             🖨 Print / Export PDF
           </button>
@@ -119,16 +124,18 @@ export default function PanelPage() {
       </div>
 
       {loading && (
-        <p className="text-neutral-500">{t("Memuat panel…", "Loading panel…")}</p>
+        <div className="h-[420px] animate-pulse rounded-2xl border border-slate-200 bg-white/70">
+          <span className="sr-only">{t("Memuat panel…", "Loading panel…")}</span>
+        </div>
       )}
       {error && (
-        <div className="rounded border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-800">
           {error}
         </div>
       )}
 
       {panel && (
-        <div className="print-area rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+        <div className="print-area rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-900/[0.04] sm:p-5">
           <HorizontalScroller>
             <PanelScheduleTable
               panel={panel}
