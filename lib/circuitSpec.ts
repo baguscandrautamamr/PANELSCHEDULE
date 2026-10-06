@@ -10,7 +10,17 @@ import {
   is3Phase,
   suggestBreaker,
 } from "./panelCalc";
-import { cableSizeText, cableText, odText, pickCable, type CableCores, type CablePick } from "./cableCatalog";
+import {
+  cableSizeText,
+  cableText,
+  NYA_SIZES,
+  odText,
+  pickCable,
+  pickFeeder,
+  type CableCores,
+  type CablePick,
+  type FeederPick,
+} from "./cableCatalog";
 
 /**
  * Jenis beban satu circuit — penentu jenis breaker dan jenis kabelnya.
@@ -197,8 +207,11 @@ export const MAIN_BREAKER_RATINGS = [
   225, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600,
 ];
 
-/** Ukuran kabel NYA pembumian (mm²) — PUIL: S<=16 sama, 16<S<=35 -> 16, S>35 -> S/2. */
-const NYA_SIZES = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
+/**
+ * Ukuran kabel NYA pembumian (mm²) dari total penampang fase S — PUIL:
+ * S<=16 sama, 16<S<=35 -> 16, S>35 -> S/2, dibulatkan ke atas ke ukuran NYA
+ * di katalog KMI (maks 400 mm²).
+ */
 export function groundSize(phaseSize: number): number {
   if (phaseSize <= 16) return phaseSize;
   if (phaseSize <= 35) return 16;
@@ -215,9 +228,9 @@ export interface MainBreakerSpec {
   type: string;
   /** "MCCB 3P 200A" */
   breaker: string;
-  /** "NYY 4C x 70mm² + NYA 1C x 35mm²" */
+  /** "NYY 4C x 70mm² + NYA 1C x 35mm²", paralel: "2 x (NYY 4C x 240mm²) + NYA 1C x 240mm²" */
   cable: string;
-  cablePick: CablePick | null;
+  cablePick: FeederPick | null;
   /** rasio CT, mis. "200/5A" (null kalau tidak perlu CT, rating < 100A) */
   ct: string | null;
   /** skala ammeter "0~200A" */
@@ -237,8 +250,9 @@ export function connectedAmpere(panel: Panel, circuits: Circuit[]): number {
 /**
  * Main breaker + kabel incoming, diturunkan dari CONNECTED AMPERE x 1,2:
  * rating standar terdekat di atasnya, MCB sampai 63A dan MCCB di atasnya.
- * Kabel incoming NYY 4C (3 fase) / 2C→3C (1 fase) dengan KHA >= rating,
- * ditambah NYA 1C pembumian.
+ * Kabel incoming NYY 4C (3 fase) / 3C (1 fase) dari database KMI dengan
+ * KHA >= rating; di atas KHA NYY 240 mm² dipecah jadi kabel paralel (lihat
+ * `pickFeeder`). Ditambah NYA 1C pembumian dari total penampang fase.
  */
 export function mainBreakerSpec(panel: Panel, circuits: Circuit[]): MainBreakerSpec {
   const three = is3Phase(panel);
@@ -251,12 +265,13 @@ export function mainBreakerSpec(panel: Panel, circuits: Circuit[]): MainBreakerS
   const size = rating == null ? `> ${MAIN_BREAKER_RATINGS[MAIN_BREAKER_RATINGS.length - 1]}A` : `${rating}A`;
 
   const cores: CableCores = three ? 4 : 3;
-  const cablePick = rating == null ? null : pickCable(cores, rating, 4);
-  const cable = cablePick
-    ? `NYY ${cores}C x ${cableSizeText(cablePick.size)}mm² + NYA 1C x ${cableSizeText(
-        groundSize(cablePick.size)
-      )}mm²`
-    : "";
+  const cablePick = rating == null ? null : pickFeeder(cores, rating, 4);
+  let cable = "";
+  if (cablePick) {
+    const nyy = `NYY ${cores}C x ${cableSizeText(cablePick.size)}mm²`;
+    const pe = `NYA 1C x ${cableSizeText(groundSize(cablePick.runs * cablePick.size))}mm²`;
+    cable = cablePick.runs > 1 ? `${cablePick.runs} x (${nyy}) + ${pe}` : `${nyy} + ${pe}`;
+  }
 
   const withCt = rating != null && rating >= 100;
   return {

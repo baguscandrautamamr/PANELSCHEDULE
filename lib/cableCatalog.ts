@@ -1,17 +1,40 @@
 /**
- * Katalog kabel NYY 0,6/1 kV — PT KMI Wire and Cable Tbk, standar IEC 60502-1
- * (lembar data 14233-03 / 14233-04 / 14233-05 Rev. 2.0 / 2009). Yang dipakai
- * hanya NYY 3C, 4C, dan 5C — inti tunggal (1C) tidak dipakai buat outgoing
- * circuit panel.
+ * Database kabel LV PT KMI Wire and Cable Tbk ada di `data/kmi-lv-cables.json`
+ * — disalin dari PDF katalog di folder "CABLE KMI/CABLE LV" (NYY, NYA, NYM,
+ * NYFGbY, NYRY, NYBY, NYCY, NYSY): ukuran, OD, berat, resistansi, induktansi,
+ * KHA di udara/tanah pada 30 °C, dan arus hubung singkat 1 detik.
+ *
+ * Panel schedule memakai NYY 3C/4C/5C buat outgoing dan feeder, dan NYA 1C
+ * buat pembumian.
  *
  * `ampacity` = "Current-Carrying Capacity at 30 °C, in air" dari katalog.
- * Sengaja memakai angka di UDARA, bukan di tanah, karena kabel outgoing panel
- * dipasang di tray/conduit di dalam gedung dan angkanya lebih kecil untuk
- * ukuran-ukuran kecil, jadi pemilihannya aman.
+ * Sengaja memakai angka di UDARA, bukan di tanah, karena kabel panel dipasang
+ * di tray/conduit di dalam gedung dan angkanya lebih kecil untuk ukuran-ukuran
+ * kecil, jadi pemilihannya aman.
  *
  * `od` = overall diameter (mm) dari katalog — jadi isi kolom OD di schedule dan
  * dipakai buat hitung cable tray.
  */
+import kmi from "../data/kmi-lv-cables.json";
+
+/** Satu baris tabel katalog KMI (field yang tidak ada di jenis kabel itu tidak diisi). */
+export interface KmiCableRow {
+  size: number;
+  od: number;
+  weight: number;
+  rdc20: number;
+  rac70: number;
+  ampAir: number;
+  ampGround?: number;
+  ampPipe?: number;
+  isc1s: number;
+}
+
+/** Semua jenis kabel di database KMI: NYY, NYA, NYM, NYFGbY, NYRY, NYBY, NYCY, NYSY. */
+export const KMI_LV_CABLES = kmi.types as unknown as Record<
+  string,
+  { desc: string; standard: string; voltage: string; cores: Record<string, KmiCableRow[]> }
+>;
 
 /** Jumlah inti kabel yang dipakai di panel schedule ini. */
 export type CableCores = 3 | 4 | 5;
@@ -25,66 +48,17 @@ export interface CableSize {
   ampacity: number;
 }
 
-/** NYY 3 x (1,5-400) mm² — 14233-03 */
-const NYY_3C: CableSize[] = [
-  { size: 1.5, od: 13.0, ampacity: 19 },
-  { size: 2.5, od: 14.0, ampacity: 26 },
-  { size: 4, od: 16.1, ampacity: 34 },
-  { size: 6, od: 17.3, ampacity: 44 },
-  { size: 10, od: 19.4, ampacity: 60 },
-  { size: 16, od: 22.0, ampacity: 79 },
-  { size: 25, od: 25.0, ampacity: 105 },
-  { size: 35, od: 27.5, ampacity: 129 },
-  { size: 50, od: 30.0, ampacity: 162 },
-  { size: 70, od: 34.0, ampacity: 203 },
-  { size: 95, od: 38.5, ampacity: 250 },
-  { size: 120, od: 41.5, ampacity: 289 },
-  { size: 150, od: 46.0, ampacity: 330 },
-  { size: 185, od: 50.5, ampacity: 381 },
-  { size: 240, od: 57.0, ampacity: 451 },
-  { size: 300, od: 62.5, ampacity: 517 },
-  { size: 400, od: 69.0, ampacity: 594 },
-];
-
-/** NYY 4 x (1,5-400) mm² — 14233-04 */
-const NYY_4C: CableSize[] = [
-  { size: 1.5, od: 13.8, ampacity: 22 },
-  { size: 2.5, od: 15.0, ampacity: 29 },
-  { size: 4, od: 17.3, ampacity: 39 },
-  { size: 6, od: 18.7, ampacity: 50 },
-  { size: 10, od: 21.5, ampacity: 68 },
-  { size: 16, od: 23.5, ampacity: 90 },
-  { size: 25, od: 27.5, ampacity: 121 },
-  { size: 35, od: 30.0, ampacity: 149 },
-  { size: 50, od: 35.5, ampacity: 173 },
-  { size: 70, od: 39.0, ampacity: 215 },
-  { size: 95, od: 44.5, ampacity: 266 },
-  { size: 120, od: 48.5, ampacity: 308 },
-  { size: 150, od: 54.5, ampacity: 357 },
-  { size: 185, od: 59.0, ampacity: 405 },
-  { size: 240, od: 66.0, ampacity: 482 },
-  { size: 300, od: 72.5, ampacity: 552 },
-  { size: 400, od: 82.5, ampacity: 643 },
-];
-
-/** NYY 5 x (1,5-50) mm² — 14233-05 (katalog KMI berhenti di 50 mm²) */
-const NYY_5C: CableSize[] = [
-  { size: 1.5, od: 14.8, ampacity: 23 },
-  { size: 2.5, od: 16.0, ampacity: 30 },
-  { size: 4, od: 18.7, ampacity: 41 },
-  { size: 6, od: 20.5, ampacity: 52 },
-  { size: 10, od: 23.0, ampacity: 71 },
-  { size: 16, od: 26.0, ampacity: 94 },
-  { size: 25, od: 30.0, ampacity: 126 },
-  { size: 35, od: 33.0, ampacity: 155 },
-  { size: 50, od: 38.0, ampacity: 189 },
-];
+const nyy = (cores: CableCores): CableSize[] =>
+  KMI_LV_CABLES.NYY.cores[cores].map((r) => ({ size: r.size, od: r.od, ampacity: r.ampAir }));
 
 export const NYY_CATALOG: Record<CableCores, CableSize[]> = {
-  3: NYY_3C,
-  4: NYY_4C,
-  5: NYY_5C,
+  3: nyy(3),
+  4: nyy(4),
+  5: nyy(5),
 };
+
+/** Ukuran NYA 1C yang ada di katalog KMI (1,5-400 mm²). */
+export const NYA_SIZES: number[] = KMI_LV_CABLES.NYA.cores[1].map((r) => r.size);
 
 export interface CablePick extends CableSize {
   cores: CableCores;
@@ -119,3 +93,55 @@ export const cableText = (cores: CableCores, size: number) =>
 
 /** Isi kolom OD (mm), 1 desimal seperti katalog. */
 export const odText = (od: number) => od.toFixed(1);
+
+/**
+ * Faktor koreksi kabel multi-core yang dipasang berdampingan (bersentuhan) di
+ * satu cable tray berlubang — IEC 60364-5-52 Tabel B.52.20 (metode E).
+ * Index = jumlah kabel; di atas 6 pakai angka untuk 6 (0,76) kecuali 9+.
+ */
+const GROUPING_FACTOR: Record<number, number> = { 1: 1, 2: 0.88, 3: 0.82, 4: 0.79, 5: 0.76, 6: 0.76 };
+export const groupingFactor = (runs: number) => GROUPING_FACTOR[runs] ?? 0.73;
+
+/**
+ * Ukuran maksimum per kabel buat feeder/incoming paralel. Di atas 240 mm²
+ * NYY multi-core (300/400) berat, susah ditekuk & diterminasi ke MCCB, dan
+ * katalog KMI cuma menyediakannya "on available length".
+ */
+export const FEEDER_MAX_SIZE = 240;
+const FEEDER_MAX_RUNS = 8;
+
+export interface FeederPick extends CablePick {
+  /** jumlah kabel paralel per fase (1 = kabel tunggal) */
+  runs: number;
+  /** faktor grouping yang dipakai buat kabel paralel */
+  factor: number;
+  /** KHA total terkoreksi = runs x ampacity x factor (A) */
+  capacity: number;
+}
+
+/**
+ * Kabel incoming/feeder: satu kabel NYY kalau ada ukuran <= 240 mm² yang
+ * KHA-nya cukup; kalau tidak, dipecah jadi beberapa kabel paralel ukuran sama
+ * dengan KHA dikoreksi faktor grouping — jumlah kabel paling sedikit, lalu
+ * ukuran terkecil yang memenuhi n x KHA x faktor >= `current`.
+ */
+export function pickFeeder(cores: CableCores, current: number, minSize: number): FeederPick {
+  const list = NYY_CATALOG[cores].filter((s) => s.size >= minSize && s.size <= FEEDER_MAX_SIZE);
+  for (let runs = 1; runs <= FEEDER_MAX_RUNS; runs++) {
+    const factor = groupingFactor(runs);
+    const fit = list.find((s) => runs * s.ampacity * factor >= current);
+    if (fit) {
+      return { ...fit, cores, undersized: false, runs, factor, capacity: runs * fit.ampacity * factor };
+    }
+  }
+  const last = list[list.length - 1];
+  const factor = groupingFactor(FEEDER_MAX_RUNS);
+  return {
+    ...last,
+    cores,
+    undersized: true,
+    runs: FEEDER_MAX_RUNS,
+    factor,
+    capacity: FEEDER_MAX_RUNS * last.ampacity * factor,
+  };
+}
