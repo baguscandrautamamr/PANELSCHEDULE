@@ -57,11 +57,13 @@ export const allowedRatings = (rule: CircuitRule) =>
  * arus bocornya yang menentukan, bukan lampunya.
  */
 function loadKind(c: Circuit): LoadKind {
-  const fromFunction = textGroup(c.function_name ?? "");
+  // FUNCTION campuran ("LIGHTING + RECEPTACLE (D)/7") dicek per bagian —
+  // textGroup sendiri mendahulukan lighting, jadi receptacle-nya bisa tertelan
+  const fromFunction = (c.function_name ?? "").split("+").map(textGroup);
   const fromFixtures = (c.circuit_fixtures ?? []).map((f) =>
     textGroup(`${f.fixture_type} ${f.fixture_label ?? ""}`)
   );
-  const groups = [fromFunction, ...fromFixtures];
+  const groups = [...fromFunction, ...fromFixtures];
 
   if (groups.includes(FIXTURE_GROUP.electrical)) return "receptacle";
   if (groups.includes(FIXTURE_GROUP.lighting)) return "lighting";

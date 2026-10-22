@@ -106,7 +106,7 @@ export function circuitAmpere(panel: Panel, c: PhaseLoads): number | null {
  * Rating breaker yang lazim dipakai (A) — MCB lighting/receptacle sampai MCCB
  * feeder. Jadi pilihan di kolom "BREAKER SELECTION".
  */
-export const BREAKER_RATINGS = [10, 16, 20, 25, 35, 40, 50, 63, 80, 100, 125, 160, 200];
+export const BREAKER_RATINGS = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200];
 
 /** Faktor cadangan breaker: arus circuit ditambah 20% sebelum dicocokkan ke rating. */
 export const BREAKER_MARGIN = 1.2;
