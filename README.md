@@ -46,6 +46,7 @@ Buka [SQL Editor](https://supabase.com/dashboard/project/ptkhwoabeclqbfemxgnj/sq
 ```bash
 npm install
 npm run dev   # http://localhost:3000
+npm test      # unit test rumus (vitest)
 ```
 
 ## Fitur sekarang (Fase 1 + sebagian Fase 2)
@@ -88,7 +89,7 @@ npm run dev   # http://localhost:3000
     (`220/380V` → 220); kalau panel 3 fase cuma menyebut satu angka, L-N
     diturunkan dari `L-L / √3` lalu dibulatkan ke tegangan standar terdekat.
   - kolom **BREAKER SELECTION**: rating standar terkecil yang masih **di atas
-    ampere circuit + 20% (x1,2)** — `10, 16, 20, 25, 35, 40, 50, 63, 80, 100, 125, 160, 200 A`.
+    ampere circuit + 20% (x1,2)** — `10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200 A`.
     Di atas 200 A ditulis `> 200A` (perlu breaker khusus, tidak ditebak).
     Sifatnya usulan ukuran; tetap perlu dicek terhadap KHA kabel & jenis beban.
   - kolom **BREAKER**: jenis breaker menurut jenis bebannya, **ratingnya ikut
@@ -237,4 +238,5 @@ lib/dxf.ts                # penulis DXF R12 (tanpa dependensi)
 lib/exportDxf.ts          # layout SLD + tabel ke DXF
 supabase/schema.sql       # jalankan di SQL Editor
 supabase/seed.sql         # data contoh P-011.4
+tests/                    # unit test vitest: ampere, breaker, kabel, main breaker, watt fixture
 ```
