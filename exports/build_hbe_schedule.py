@@ -56,7 +56,7 @@ hdr(ws, "R6:R7", "REMARK")
 for col, text in zip("FGHIJKLMNOPQ", [
         "DESIGN TEMP. (°C)", "SENSIBLE LOAD (KW)", "LATENT LOAD (KW)", "TOTAL LOAD (KW)",
         "AIRFLOW (CMH)", "TAG NO", "TYPE", "MODEL", "TOTAL LOAD (KW)", "QTY",
-        "POWER SUPPLY VOLTAGE - PHASE", "POWER CONSUMPTION (WATT)"]):
+        "POWER SUPPLY VOLTAGE - PHASE", "POWER CONSUMPTION (kW)"]):
     hdr(ws, f"{col}7", text)
 
 GF, F1 = "Finish Good Warehouse -GF", "Finish Good Warehouse -1F"
@@ -133,8 +133,8 @@ fans = [
     ("EF D-002", None, "SUGAR STORAGE", WI, 18220, 50, 775, 1425, 52, 81, 1.1, "380-415 V/ 50 HZ", 1),
     ("EF D-003", None, "DRIVER TOILET", IC, 410, 100, 302, 1334, 14, 50, 0.07, "220V-240V / 50 HZ", 1),
     ("EF D-004", None, "MALE TOILET\nFEMALE TOILET\nJANITOR", IC, 650, 100, 302, 1486, 14, 53, 0.07, "220V-240V / 50 HZ", 1),
-    ("EF D-102", None, "LOCKER", SV, 520, 80, None, 1169, 11, 44, 0.05, "220V-240V / 50 HZ", 1),
-    ("EF D-101", None, "ARCHIEVE ROOM", SV, 630, 80, None, 1047, 14, 50, 0.07, "220V-240V / 50 HZ", 1),
+    ("EF D-101", None, "LOCKER", SV, 520, 80, None, 1169, 11, 44, 0.05, "220V-240V / 50 HZ", 1),
+    ("EF D-102", None, "ARCHIEVE ROOM", SV, 630, 80, None, 1047, 14, 50, 0.07, "220V-240V / 50 HZ", 1),
     ("EF D-103", None, "PANTRY", SV, 590, 80, None, 1353, 11, 49, 0.08, "220V-240V / 50 HZ", 1),
     ("CF D-101", None, "LOCKER", CP, 12780, None, "DIA 1500 MM", None, 6.2, None, 0.07, "1/220/50", 1),
     ("CF D-102", None, "ARCHIEVE ROOM", CP, 12780, None, "DIA 1500 MM", None, 6.2, None, 0.07, "1/220/50", 1),
